@@ -7,9 +7,9 @@ Rust. Its base experience is one `hyphae` binary and one data directory.
 > `0.1.0-alpha.1`; none of the `0.1.0` compatibility guarantees apply until
 > every release gate is green.
 
-The durable core, deterministic query/retrieval, offline result proofs, and
-secure optional `/v1` server are locally validated. Their cross-platform CI
-evidence remains open.
+The durable core, deterministic query/retrieval, offline result proofs, secure
+optional `/v1` server, and five equivalent public clients are locally
+validated. Their cross-platform CI evidence remains open.
 
 ## Product contract
 
@@ -48,7 +48,7 @@ and rebuildable. The default path remains entirely local and deterministic.
 - `crates/`: Rust engine, storage, query, retrieval, server, client, and CLI.
 - `contracts/`: canonical OpenAPI 3.1 and JSON Schema 2020-12 contracts.
 - `sdks/`: TypeScript and Python SDKs generated from public contracts.
-- `mcp/`: MCP package consuming the public client contract.
+- `mcp/`: MCP adapter documentation; implementation is the single binary.
 - `examples/`: executable examples for embedded and HTTP use.
 - `docs/`: architecture, ADRs, operations, release gates, and source ledger.
 - `packaging/`: multiplatform packaging, SBOM, and signing definitions.

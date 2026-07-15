@@ -1,0 +1,191 @@
+{
+  "version": 1,
+  "put_request": {
+    "transaction_id": "018f0000-0000-7000-8000-000000000101",
+    "records": [
+      {
+        "key_hex": "61",
+        "value": {
+          "group": "x",
+          "payload": {
+            "$hyphae_bytes_hex": "00ff"
+          },
+          "score": 10
+        }
+      },
+      {
+        "key_hex": "62",
+        "value": {
+          "group": "x",
+          "score": 8
+        }
+      },
+      {
+        "key_hex": "63",
+        "value": {
+          "group": null,
+          "score": 7
+        }
+      },
+      {
+        "key_hex": "64",
+        "value": {
+          "score": 2
+        }
+      }
+    ]
+  },
+  "conflict_put_request": {
+    "transaction_id": "018f0000-0000-7000-8000-000000000101",
+    "records": [
+      {
+        "key_hex": "61",
+        "value": {
+          "group": "changed",
+          "score": 999
+        }
+      }
+    ]
+  },
+  "present_get_request": {
+    "key_hex": "61"
+  },
+  "absent_get_request": {
+    "key_hex": "ff"
+  },
+  "query_request": {
+    "filter": {
+      "op": "compare",
+      "path": [
+        "score"
+      ],
+      "operator": "greater_or_equal",
+      "value": 0
+    },
+    "sort": [
+      {
+        "path": [
+          "score"
+        ],
+        "direction": "descending",
+        "nulls": "last"
+      }
+    ],
+    "cursor": null,
+    "limit": 3,
+    "aggregation": {
+      "group_by": [
+        [
+          "group"
+        ]
+      ],
+      "metrics": [
+        {
+          "metric": "count",
+          "name": "count"
+        },
+        {
+          "metric": "sum",
+          "name": "score_sum",
+          "path": [
+            "score"
+          ]
+        }
+      ]
+    },
+    "timeout_ms": 5000
+  },
+  "delete_request": {
+    "transaction_id": "018f0000-0000-7000-8000-000000000102",
+    "keys_hex": [
+      "62"
+    ]
+  },
+  "expected": {
+    "first_page_keys": [
+      "61",
+      "62",
+      "63"
+    ],
+    "second_page_keys": [
+      "64"
+    ],
+    "matched_records": 4,
+    "aggregation": {
+      "grouped": true,
+      "groups": [
+        {
+          "key": [
+            {
+              "kind": "missing"
+            }
+          ],
+          "metrics": [
+            {
+              "name": "count",
+              "result": {
+                "kind": "count",
+                "value": 1
+              }
+            },
+            {
+              "name": "score_sum",
+              "result": {
+                "kind": "integer",
+                "value": "2"
+              }
+            }
+          ]
+        },
+        {
+          "key": [
+            {
+              "kind": "value",
+              "value": null
+            }
+          ],
+          "metrics": [
+            {
+              "name": "count",
+              "result": {
+                "kind": "count",
+                "value": 1
+              }
+            },
+            {
+              "name": "score_sum",
+              "result": {
+                "kind": "integer",
+                "value": "7"
+              }
+            }
+          ]
+        },
+        {
+          "key": [
+            {
+              "kind": "value",
+              "value": "x"
+            }
+          ],
+          "metrics": [
+            {
+              "name": "count",
+              "result": {
+                "kind": "count",
+                "value": 2
+              }
+            },
+            {
+              "name": "score_sum",
+              "result": {
+                "kind": "integer",
+                "value": "18"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

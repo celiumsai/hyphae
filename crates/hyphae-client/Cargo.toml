@@ -11,7 +11,10 @@ publish.workspace = true
 
 [dependencies]
 hyphae-contracts.workspace = true
-hyphae-core.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
 
 [lints]
 workspace = true

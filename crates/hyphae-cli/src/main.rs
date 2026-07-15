@@ -3,17 +3,20 @@
 //! Command-line entry point for the single Hyphae executable.
 
 mod json_value;
+mod mcp;
 
 use std::{
     env,
     error::Error,
     fs,
-    io::{BufWriter, Write, stdout},
+    io::{BufWriter, Read, Write, stdin, stdout},
     net::SocketAddr,
     path::{Path, PathBuf},
 };
 
 use clap::{Parser, Subcommand};
+use hyphae_client::HyphaeClient;
+use hyphae_contracts::v1::{DeleteRequestV1, GetRequestV1, ProofV1, PutRequestV1, QueryRequestV1};
 use hyphae_core::current_version;
 use hyphae_engine::{
     HyphaeEngine, ProvenResult, ResultProofArtifact, VerificationLimits, verify_result_proof,
@@ -172,6 +175,66 @@ enum Command {
         #[arg(long, env = "HYPHAE_BEARER_TOKEN_FILE")]
         bearer_token_file: Option<PathBuf>,
     },
+    /// Call a running Hyphae instance through only the public version 1 API.
+    Remote {
+        /// Root HTTP(S) origin. The token is never accepted on argv.
+        #[arg(long, env = "HYPHAE_BASE_URL")]
+        base_url: String,
+        /// Restricted bearer-token file. Alternatively set
+        /// `HYPHAE_BEARER_TOKEN`.
+        #[arg(long, env = "HYPHAE_BEARER_TOKEN_FILE")]
+        bearer_token_file: Option<PathBuf>,
+        #[command(subcommand)]
+        operation: RemoteCommand,
+    },
+    /// Run the optional MCP 2025-11-25 stdio adapter over the public API.
+    Mcp {
+        /// Root HTTP(S) Hyphae origin. MCP never opens a data directory.
+        #[arg(long, env = "HYPHAE_BASE_URL")]
+        base_url: String,
+        /// Restricted bearer-token file. Alternatively set
+        /// `HYPHAE_BEARER_TOKEN`.
+        #[arg(long, env = "HYPHAE_BEARER_TOKEN_FILE")]
+        bearer_token_file: Option<PathBuf>,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum RemoteCommand {
+    /// Print public API capabilities and effective limits.
+    Capabilities,
+    /// Print process liveness.
+    Liveness,
+    /// Print engine readiness.
+    Readiness,
+    /// Submit a typed JSON `PutRequestV1` from a file or standard input (`-`).
+    Put {
+        #[arg(long)]
+        request: PathBuf,
+    },
+    /// Submit a typed JSON `GetRequestV1` from a file or standard input (`-`).
+    Get {
+        #[arg(long)]
+        request: PathBuf,
+    },
+    /// Submit a typed JSON `DeleteRequestV1` from a file or standard input (`-`).
+    Delete {
+        #[arg(long)]
+        request: PathBuf,
+    },
+    /// Submit a typed JSON `QueryRequestV1` from a file or standard input (`-`).
+    Query {
+        #[arg(long)]
+        request: PathBuf,
+    },
+    /// Download the canonical witness referenced by a `ProofV1` JSON file.
+    Witness {
+        #[arg(long)]
+        proof: PathBuf,
+        /// New destination file; existing files are never replaced.
+        #[arg(long)]
+        out: PathBuf,
+    },
 }
 
 #[tokio::main]
@@ -227,6 +290,62 @@ async fn main() -> Result<(), Box<dyn Error>> {
             bind,
             bearer_token_file,
         } => serve(data_dir, bind, bearer_token_file.as_deref()).await,
+        Command::Remote {
+            base_url,
+            bearer_token_file,
+            operation,
+        } => remote(&base_url, bearer_token_file.as_deref(), operation).await,
+        Command::Mcp {
+            base_url,
+            bearer_token_file,
+        } => {
+            let token = load_remote_bearer_token(bearer_token_file.as_deref())?;
+            mcp::run(&base_url, token.as_deref()).await
+        }
+    }
+}
+
+async fn remote(
+    base_url: &str,
+    bearer_token_file: Option<&Path>,
+    operation: RemoteCommand,
+) -> Result<(), Box<dyn Error>> {
+    let mut builder = HyphaeClient::builder(base_url)?;
+    if let Some(token) = load_remote_bearer_token(bearer_token_file)? {
+        builder = builder.bearer_token(&token)?;
+    }
+    let client = builder.build()?;
+    match operation {
+        RemoteCommand::Capabilities => print_serializable(&client.capabilities().await?.value),
+        RemoteCommand::Liveness => print_serializable(&client.liveness().await?.value),
+        RemoteCommand::Readiness => print_serializable(&client.readiness().await?.value),
+        RemoteCommand::Put { request } => {
+            let request: PutRequestV1 = read_json_request(&request)?;
+            print_serializable(&client.put(&request).await?.value)
+        }
+        RemoteCommand::Get { request } => {
+            let request: GetRequestV1 = read_json_request(&request)?;
+            print_serializable(&client.get(&request).await?.value)
+        }
+        RemoteCommand::Delete { request } => {
+            let request: DeleteRequestV1 = read_json_request(&request)?;
+            print_serializable(&client.delete(&request).await?.value)
+        }
+        RemoteCommand::Query { request } => {
+            let request: QueryRequestV1 = read_json_request(&request)?;
+            print_serializable(&client.query(&request).await?.value)
+        }
+        RemoteCommand::Witness { proof, out } => {
+            let proof: ProofV1 = read_json_request(&proof)?;
+            let witness = client.download_witness(&proof).await?.value;
+            let mut output = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&out)?;
+            output.write_all(&witness)?;
+            output.sync_all()?;
+            print_json(&json!({ "path": out, "file_bytes": witness.len() }))
+        }
     }
 }
 
@@ -268,6 +387,24 @@ fn load_bearer_token(path: Option<&Path>) -> Result<Option<BearerToken>, Box<dyn
     Ok(Some(BearerToken::new(encoded)?))
 }
 
+fn load_remote_bearer_token(path: Option<&Path>) -> Result<Option<String>, Box<dyn Error>> {
+    let Some(mut encoded) = load_bearer_token_bytes(path)? else {
+        return Ok(None);
+    };
+    if encoded.last() == Some(&b'\n') {
+        encoded.pop();
+        if encoded.last() == Some(&b'\r') {
+            encoded.pop();
+        }
+    }
+    if encoded.contains(&b'\n') || encoded.contains(&b'\r') {
+        return Err(CliError::BearerTokenContainsNewline.into());
+    }
+    String::from_utf8(encoded)
+        .map(Some)
+        .map_err(|_| CliError::InvalidBearerTokenEncoding.into())
+}
+
 fn load_bearer_token_bytes(path: Option<&Path>) -> Result<Option<Vec<u8>>, Box<dyn Error>> {
     if let Some(path) = path {
         #[cfg(unix)]
@@ -288,6 +425,20 @@ fn load_bearer_token_bytes(path: Option<&Path>) -> Result<Option<Vec<u8>>, Box<d
         .into_string()
         .map(|value| Some(value.into_bytes()))
         .map_err(|_| CliError::InvalidBearerTokenEncoding.into())
+}
+
+fn read_json_request<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, Box<dyn Error>> {
+    let mut encoded = Vec::new();
+    if path == Path::new("-") {
+        stdin().lock().read_to_end(&mut encoded)?;
+    } else {
+        encoded = fs::read(path)?;
+    }
+    Ok(serde_json::from_slice(&encoded)?)
+}
+
+fn print_serializable(value: &impl serde::Serialize) -> Result<(), Box<dyn Error>> {
+    print_json(&serde_json::to_value(value)?)
 }
 
 fn print_version(json_output: bool) -> Result<(), Box<dyn Error>> {

@@ -1,7 +1,9 @@
 # SDKs
 
-Rust embedding is delivered by the workspace facade added with the durable
-engine. TypeScript and Python SDKs are introduced in Phase 6 and must pass the
-same black-box conformance suite as the Rust client.
+The bounded Rust HTTP client lives in `crates/hyphae-client`. TypeScript and
+Python SDKs are generated from canonical JSON Schema models and implemented in
+this directory. TypeScript and Python have no runtime package dependencies.
 
-No SDK may import storage internals or require an optional provider.
+All three pass the same live black-box fixture as CLI and MCP. No SDK imports
+storage internals or requires an optional provider. See
+[`docs/clients/v1.md`](../docs/clients/v1.md).

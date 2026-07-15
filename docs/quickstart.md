@@ -116,10 +116,18 @@ processes cannot open the same directory. For authentication, remote-bind
 rules, curl examples, limits, and proof witness download, see
 [`api/v1.md`](api/v1.md).
 
+## Optional public clients
+
+The Rust, TypeScript, Python, remote CLI, and MCP surfaces call only `/v1`.
+For installation/source examples, lossless TypeScript integer behavior,
+remote request files, MCP host configuration, and the common executable suite,
+see [`clients/v1.md`](clients/v1.md).
+
 ## Current boundary
 
 The current implementation exposes durable KV documents, deterministic
 structured query, snapshot, compaction, offline result proofs, and the
-optional secure OpenAPI-first `/v1` server. Semantic retrieval already has
+optional secure OpenAPI-first `/v1` server and equivalent public clients.
+Semantic retrieval already has
 provider-neutral exact reference semantics, but no embedding provider is
 enabled or required.

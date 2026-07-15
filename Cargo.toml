@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "conformance/rust",
     "crates/hyphae-cli",
     "crates/hyphae-client",
     "crates/hyphae-contracts",
@@ -34,6 +35,7 @@ crc32c = "0.6.8"
 fs4 = "1.1.0"
 http = "1.4.0"
 hyphae-contracts = { path = "crates/hyphae-contracts", version = "=0.1.0-alpha.1" }
+hyphae-client = { path = "crates/hyphae-client", version = "=0.1.0-alpha.1" }
 hyphae-core = { path = "crates/hyphae-core", version = "=0.1.0-alpha.1" }
 hyphae-engine = { path = "crates/hyphae-engine", version = "=0.1.0-alpha.1" }
 hyphae-query = { path = "crates/hyphae-query", version = "=0.1.0-alpha.1" }
@@ -42,7 +44,7 @@ hyphae-server = { path = "crates/hyphae-server", version = "=0.1.0-alpha.1" }
 hyphae-storage = { path = "crates/hyphae-storage", version = "=0.1.0-alpha.1" }
 proptest = "1.6.0"
 redb = "4.1.0"
-reqwest = { version = "0.13.1", default-features = false, features = ["json", "rustls"] }
+reqwest = { version = "0.12.28", default-features = false, features = ["json", "rustls-tls-webpki-roots"] }
 schemars = { version = "1.2.1", features = ["uuid1"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
