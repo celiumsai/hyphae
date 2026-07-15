@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hyphae.dev/schema/v1/capabilities.json",
+  "title": "Hyphae capabilities",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["api_version", "disk_format_version", "features"],
+  "properties": {
+    "api_version": {
+      "const": "v1"
+    },
+    "disk_format_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "features": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

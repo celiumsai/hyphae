@@ -1,0 +1,70 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/hyphae-cli",
+    "crates/hyphae-client",
+    "crates/hyphae-contracts",
+    "crates/hyphae-core",
+    "crates/hyphae-query",
+    "crates/hyphae-retrieval",
+    "crates/hyphae-server",
+    "crates/hyphae-storage",
+]
+default-members = ["crates/hyphae-cli"]
+
+[workspace.package]
+version = "0.1.0-alpha.1"
+edition = "2024"
+rust-version = "1.89.0"
+authors = ["Celiums Solutions LLC"]
+license = "Apache-2.0"
+repository = "https://github.com/celiumsai/hyphae"
+homepage = "https://github.com/celiumsai/hyphae"
+readme = "README.md"
+publish = false
+
+[workspace.dependencies]
+anyhow = "1.0.100"
+axum = { version = "0.8.9", features = ["json", "tokio"] }
+blake3 = "1.8.5"
+clap = { version = "4.6.1", features = ["derive", "env"] }
+fs4 = "1.1.0"
+http = "1.4.0"
+hyphae-contracts = { path = "crates/hyphae-contracts", version = "=0.1.0-alpha.1" }
+hyphae-core = { path = "crates/hyphae-core", version = "=0.1.0-alpha.1" }
+redb = "4.1.0"
+reqwest = { version = "0.13.1", default-features = false, features = ["json", "rustls"] }
+schemars = { version = "1.2.1", features = ["uuid1"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.150"
+serde_yaml_ng = "0.10.0"
+thiserror = "2.0.18"
+tokio = { version = "1.49.0", features = ["macros", "net", "rt-multi-thread", "signal", "time"] }
+tower-http = { version = "0.6.8", features = ["catch-panic", "cors", "limit", "request-id", "timeout", "trace"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.22", features = ["env-filter", "fmt", "json"] }
+uuid = { version = "1.23.5", features = ["serde", "v7"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+unreachable_pub = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+strip = "symbols"
+
+[profile.dist]
+inherits = "release"
+lto = "fat"
+codegen-units = 1

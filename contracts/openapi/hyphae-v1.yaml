@@ -1,0 +1,97 @@
+openapi: 3.1.0
+info:
+  title: Hyphae API
+  version: 0.1.0-alpha.1
+  description: Public version 1 contract for the autonomous Hyphae data engine.
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+x-hyphae-status: alpha
+servers:
+  - url: http://127.0.0.1:8787
+paths:
+  /v1/capabilities:
+    get:
+      operationId: getCapabilities
+      summary: Report implemented public capabilities
+      responses:
+        "200":
+          description: Current capability set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Capabilities"
+  /v1/health/live:
+    get:
+      operationId: getLiveness
+      summary: Report process liveness
+      responses:
+        "200":
+          description: Process is live
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+  /v1/health/ready:
+    get:
+      operationId: getReadiness
+      summary: Report readiness to serve data operations
+      responses:
+        "200":
+          description: Process is ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+        "503":
+          description: Process is not ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+components:
+  schemas:
+    Capabilities:
+      type: object
+      additionalProperties: false
+      required:
+        - api_version
+        - disk_format_version
+        - features
+      properties:
+        api_version:
+          type: string
+          const: v1
+        disk_format_version:
+          type: integer
+          minimum: 1
+        features:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+    Health:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - live
+            - ready
+    Error:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - message
+        - request_id
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
