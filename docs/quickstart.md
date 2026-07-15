@@ -100,10 +100,26 @@ $proven = .\target\release\hyphae.exe query `
 complete snapshot, reexecutes the embedded operation, and requires an exact
 result match. It does not open a live data directory or contact the network.
 
+## Optional `/v1` server
+
+The same binary can explicitly own the directory and expose the public API on
+loopback:
+
+```bash
+./target/release/hyphae serve
+curl --fail http://127.0.0.1:8787/v1/health/live
+curl --fail http://127.0.0.1:8787/v1/capabilities
+```
+
+No listener starts unless `serve` is selected. While it runs, other Hyphae
+processes cannot open the same directory. For authentication, remote-bind
+rules, curl examples, limits, and proof witness download, see
+[`api/v1.md`](api/v1.md).
+
 ## Current boundary
 
 The current implementation exposes durable KV documents, deterministic
-structured query, snapshot, compaction, and offline result proofs. The
-OpenAPI-first `/v1` server arrives in phase 5. Semantic retrieval already has
+structured query, snapshot, compaction, offline result proofs, and the
+optional secure OpenAPI-first `/v1` server. Semantic retrieval already has
 provider-neutral exact reference semantics, but no embedding provider is
 enabled or required.

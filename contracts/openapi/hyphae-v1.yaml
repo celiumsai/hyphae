@@ -2,96 +2,410 @@ openapi: 3.1.0
 info:
   title: Hyphae API
   version: 0.1.0-alpha.1
-  description: Public version 1 contract for the autonomous Hyphae data engine.
+  description: >-
+    Stable version 1 HTTP contract for the autonomous Hyphae data engine.
+    Hyphae remains fully usable without starting this optional server.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
 x-hyphae-status: alpha
+x-hyphae-auth-policy: >-
+  Health and capability routes are public. Data and witness routes require a
+  bearer token whenever the server is configured with one. Non-loopback bind
+  is rejected unless a token is configured before bind.
 servers:
   - url: http://127.0.0.1:8787
+    description: Default loopback-only listener
+tags:
+  - name: system
+  - name: data
+  - name: proofs
 paths:
   /v1/capabilities:
     get:
+      tags: [system]
       operationId: getCapabilities
-      summary: Report implemented public capabilities
+      summary: Report implemented public capabilities and effective limits
       responses:
         "200":
           description: Current capability set
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Capabilities"
+                $ref: "../json-schema/capabilities-v1.schema.json"
   /v1/health/live:
     get:
+      tags: [system]
       operationId: getLiveness
-      summary: Report process liveness
+      summary: Report process liveness without inspecting data
       responses:
         "200":
           description: Process is live
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Health"
+                $ref: "../json-schema/health-v1.schema.json"
   /v1/health/ready:
     get:
+      tags: [system]
       operationId: getReadiness
-      summary: Report readiness to serve data operations
+      summary: Report whether the owned engine is ready for data operations
       responses:
         "200":
           description: Process is ready
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Health"
+                $ref: "../json-schema/health-v1.schema.json"
         "503":
-          description: Process is not ready
+          $ref: "#/components/responses/Unavailable"
+  /v1/kv/put:
+    post:
+      tags: [data]
+      operationId: putRecords
+      summary: Atomically commit one or more structured records
+      security:
+        - BearerAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../json-schema/put-request-v1.schema.json"
+      responses:
+        "200":
+          description: New commit or exact idempotent retry
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
-components:
-  schemas:
-    Capabilities:
-      type: object
-      additionalProperties: false
-      required:
-        - api_version
-        - disk_format_version
-        - features
-      properties:
-        api_version:
-          type: string
-          const: v1
-        disk_format_version:
-          type: integer
-          minimum: 1
-        features:
-          type: array
-          uniqueItems: true
-          items:
+                $ref: "../json-schema/commit-receipt-v1.schema.json"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "408":
+          $ref: "#/components/responses/Timeout"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/LimitExceeded"
+        "429":
+          $ref: "#/components/responses/Busy"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /v1/kv/delete:
+    post:
+      tags: [data]
+      operationId: deleteRecords
+      summary: Atomically delete one or more binary keys
+      security:
+        - BearerAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../json-schema/delete-request-v1.schema.json"
+      responses:
+        "200":
+          description: New commit or exact idempotent retry
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "../json-schema/commit-receipt-v1.schema.json"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "408":
+          $ref: "#/components/responses/Timeout"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/LimitExceeded"
+        "429":
+          $ref: "#/components/responses/Busy"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /v1/kv/get:
+    post:
+      tags: [data, proofs]
+      operationId: getRecord
+      summary: Resolve exact key presence with a portable offline proof
+      security:
+        - BearerAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../json-schema/get-request-v1.schema.json"
+      responses:
+        "200":
+          description: Proven presence or absence at one checkpoint
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "../json-schema/get-response-v1.schema.json"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "408":
+          $ref: "#/components/responses/Timeout"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/LimitExceeded"
+        "429":
+          $ref: "#/components/responses/Busy"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /v1/query:
+    post:
+      tags: [data, proofs]
+      operationId: queryRecords
+      summary: Execute a deterministic structured query with an offline proof
+      security:
+        - BearerAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../json-schema/query-request-v1.schema.json"
+      responses:
+        "200":
+          description: Complete bounded query page and proof
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "../json-schema/query-response-v1.schema.json"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "408":
+          $ref: "#/components/responses/Timeout"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/LimitExceeded"
+        "429":
+          $ref: "#/components/responses/Busy"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /v1/witnesses/{checkpoint_sequence}/{snapshot_digest}:
+    get:
+      tags: [proofs]
+      operationId: downloadWitness
+      summary: Download the exact canonical snapshot required by a result proof
+      security:
+        - BearerAuth: []
+        - {}
+      parameters:
+        - name: checkpoint_sequence
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: uint64
+            minimum: 0
+        - name: snapshot_digest
+          in: path
+          required: true
+          schema:
             type: string
-    Health:
-      type: object
-      additionalProperties: false
-      required:
-        - status
-      properties:
-        status:
-          type: string
-          enum:
-            - live
-            - ready
+            pattern: "^[0-9a-f]{64}$"
+      responses:
+        "200":
+          description: Verified canonical logical snapshot file
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+            Digest:
+              description: "blake3= followed by the lowercase snapshot digest"
+              schema:
+                type: string
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/Busy"
+        "500":
+          $ref: "#/components/responses/Internal"
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+      description: Optional on loopback; mandatory for every non-loopback bind.
+  headers:
+    RequestId:
+      description: Unique UUID request correlation identifier.
+      required: true
+      schema:
+        type: string
+        format: uuid
+  schemas:
     Error:
-      type: object
-      additionalProperties: false
-      required:
-        - code
-        - message
-        - request_id
-      properties:
-        code:
-          type: string
-        message:
-          type: string
-        request_id:
-          type: string
+      $ref: "../json-schema/error-v1.schema.json"
+  responses:
+    InvalidRequest:
+      description: Malformed JSON, unknown field, invalid value, or invalid key
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: Missing or incorrect configured bearer credential
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Conflict:
+      description: Idempotency UUID was committed previously with different contents
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Timeout:
+      description: Request-body or cooperative query deadline elapsed with no partial result
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    PayloadTooLarge:
+      description: Request or result byte budget exceeded
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    UnsupportedMediaType:
+      description: Request content type is not JSON
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    LimitExceeded:
+      description: Batch, shape, work, result, proof, or witness policy exceeded
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Busy:
+      description: Concurrent operation admission limit reached
+      headers:
+        Retry-After:
+          description: Minimum suggested retry delay in seconds
+          schema:
+            type: integer
+            minimum: 1
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Requested proof witness does not exist
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unavailable:
+      description: Owned engine is not ready
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Internal:
+      description: Internal failure with implementation details withheld
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"

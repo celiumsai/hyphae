@@ -135,9 +135,32 @@ impl HyphaeEngine {
         transaction_id: Uuid,
         key: &[u8],
     ) -> Result<AppendOutcome, EngineError> {
-        Ok(self
-            .storage
-            .write(transaction_id, &[Mutation::delete(key)])?)
+        self.delete_records(transaction_id, &[key])
+    }
+
+    /// Atomically deletes a batch of structured records.
+    ///
+    /// Duplicate keys are rejected before the log append. Deleting a missing
+    /// key remains a successful durable operation.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for duplicate keys, invalid key bounds, idempotency
+    /// conflicts, or durable storage failures.
+    pub fn delete_records(
+        &mut self,
+        transaction_id: Uuid,
+        keys: &[&[u8]],
+    ) -> Result<AppendOutcome, EngineError> {
+        let mut unique = BTreeSet::new();
+        let mut mutations = Vec::with_capacity(keys.len());
+        for key in keys {
+            if !unique.insert(*key) {
+                return Err(EngineError::DuplicateDocumentKey);
+            }
+            mutations.push(Mutation::delete(*key));
+        }
+        Ok(self.storage.write(transaction_id, &mutations)?)
     }
 
     /// Gets and verifies one structured record by binary key.

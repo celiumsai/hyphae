@@ -24,6 +24,9 @@ base engine.
 The result-proof model below is the accepted Phase 4 trust decision. The
 detailed server threat model must be accepted before Phase 5 closes.
 
+The accepted server model is maintained in
+[`server-threat-model.md`](server-threat-model.md).
+
 ## Result-proof trust model
 
 Result proof v1 uses a canonical logical snapshot as the complete offline

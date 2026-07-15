@@ -27,6 +27,7 @@ publish = false
 [workspace.dependencies]
 anyhow = "1.0.100"
 axum = { version = "0.8.9", features = ["json", "tokio"] }
+base64 = "0.22.1"
 blake3 = "1.8.5"
 clap = { version = "4.6.1", features = ["derive", "env"] }
 crc32c = "0.6.8"
@@ -37,6 +38,7 @@ hyphae-core = { path = "crates/hyphae-core", version = "=0.1.0-alpha.1" }
 hyphae-engine = { path = "crates/hyphae-engine", version = "=0.1.0-alpha.1" }
 hyphae-query = { path = "crates/hyphae-query", version = "=0.1.0-alpha.1" }
 hyphae-retrieval = { path = "crates/hyphae-retrieval", version = "=0.1.0-alpha.1" }
+hyphae-server = { path = "crates/hyphae-server", version = "=0.1.0-alpha.1" }
 hyphae-storage = { path = "crates/hyphae-storage", version = "=0.1.0-alpha.1" }
 proptest = "1.6.0"
 redb = "4.1.0"
@@ -45,8 +47,11 @@ schemars = { version = "1.2.1", features = ["uuid1"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
 serde_yaml_ng = "0.10.0"
+subtle = "2.6.1"
 thiserror = "2.0.18"
-tokio = { version = "1.49.0", features = ["macros", "net", "rt-multi-thread", "signal", "time"] }
+tokio = { version = "1.49.0", features = ["fs", "io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+tokio-util = { version = "0.7.18", features = ["io"] }
+tower = "0.5.3"
 tower-http = { version = "0.6.8", features = ["catch-panic", "cors", "limit", "request-id", "timeout", "trace"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter", "fmt", "json"] }

@@ -18,9 +18,11 @@ clap.workspace = true
 hyphae-core.workspace = true
 hyphae-engine.workspace = true
 hyphae-query.workspace = true
+hyphae-server.workspace = true
 hyphae-storage.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
 uuid.workspace = true
 
 [lints]

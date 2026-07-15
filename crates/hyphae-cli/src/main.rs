@@ -5,8 +5,11 @@
 mod json_value;
 
 use std::{
+    env,
     error::Error,
+    fs,
     io::{BufWriter, Write, stdout},
+    net::SocketAddr,
     path::{Path, PathBuf},
 };
 
@@ -20,6 +23,7 @@ use hyphae_query::{
     Cursor, ExecutionLimits, FieldPath, Filter, MetricValue, NullPlacement, Query, Record,
     SortDirection, SortField,
 };
+use hyphae_server::{BearerToken, HyphaeServer, ServerConfig};
 use hyphae_storage::{AppendOutcome, CommitReceipt, CompactionOutcome, SnapshotInfo};
 use serde_json::json;
 use thiserror::Error;
@@ -34,6 +38,16 @@ enum CliError {
 
     #[error("result proof contains an unexpected operation/result variant")]
     UnexpectedProofResult,
+
+    #[error("bearer token environment value is not valid Unicode")]
+    InvalidBearerTokenEncoding,
+
+    #[error("bearer token contains an embedded newline")]
+    BearerTokenContainsNewline,
+
+    #[cfg(unix)]
+    #[error("bearer token file must not grant permissions to group or other users")]
+    InsecureBearerTokenFile,
 }
 
 #[derive(Debug, Parser)]
@@ -145,9 +159,23 @@ enum Command {
         #[arg(long)]
         anchor: String,
     },
+    /// Start the optional secure version 1 HTTP server.
+    Serve {
+        /// Exclusively owned Hyphae data directory.
+        #[arg(long, env = "HYPHAE_DATA_DIR")]
+        data_dir: PathBuf,
+        /// Listener address; non-loopback requires bearer authentication.
+        #[arg(long, default_value = "127.0.0.1:8787")]
+        bind: SocketAddr,
+        /// Restricted file containing the bearer token. Alternatively set
+        /// `HYPHAE_BEARER_TOKEN` without placing the secret in argv.
+        #[arg(long, env = "HYPHAE_BEARER_TOKEN_FILE")]
+        bearer_token_file: Option<PathBuf>,
+    },
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
     match Cli::parse().command {
         Command::Version { json } => print_version(json),
         Command::Put {
@@ -194,7 +222,72 @@ fn main() -> Result<(), Box<dyn Error>> {
             snapshot,
             anchor,
         } => verify(&proof, &snapshot, &anchor),
+        Command::Serve {
+            data_dir,
+            bind,
+            bearer_token_file,
+        } => serve(data_dir, bind, bearer_token_file.as_deref()).await,
     }
+}
+
+async fn serve(
+    data_dir: PathBuf,
+    bind: SocketAddr,
+    bearer_token_file: Option<&Path>,
+) -> Result<(), Box<dyn Error>> {
+    let mut config = ServerConfig::new(&data_dir);
+    config.bind = bind;
+    config.bearer_token = load_bearer_token(bearer_token_file)?;
+    let bound = HyphaeServer::open(config)?.bind().await?;
+    eprintln!(
+        "hyphae serving {} with data directory {}",
+        bound.local_addr(),
+        data_dir.display()
+    );
+    bound
+        .run_with_shutdown(async {
+            let _signal_result = tokio::signal::ctrl_c().await;
+        })
+        .await?;
+    Ok(())
+}
+
+fn load_bearer_token(path: Option<&Path>) -> Result<Option<BearerToken>, Box<dyn Error>> {
+    let Some(mut encoded) = load_bearer_token_bytes(path)? else {
+        return Ok(None);
+    };
+    if encoded.last() == Some(&b'\n') {
+        encoded.pop();
+        if encoded.last() == Some(&b'\r') {
+            encoded.pop();
+        }
+    }
+    if encoded.contains(&b'\n') || encoded.contains(&b'\r') {
+        return Err(CliError::BearerTokenContainsNewline.into());
+    }
+    Ok(Some(BearerToken::new(encoded)?))
+}
+
+fn load_bearer_token_bytes(path: Option<&Path>) -> Result<Option<Vec<u8>>, Box<dyn Error>> {
+    if let Some(path) = path {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+
+            let metadata = fs::metadata(path)?;
+            if metadata.permissions().mode() & 0o077 != 0 {
+                return Err(CliError::InsecureBearerTokenFile.into());
+            }
+        }
+        return Ok(Some(fs::read(path)?));
+    }
+    let Some(value) = env::var_os("HYPHAE_BEARER_TOKEN") else {
+        return Ok(None);
+    };
+    value
+        .into_string()
+        .map(|value| Some(value.into_bytes()))
+        .map_err(|_| CliError::InvalidBearerTokenEncoding.into())
 }
 
 fn print_version(json_output: bool) -> Result<(), Box<dyn Error>> {
@@ -502,7 +595,11 @@ fn print_json(value: &serde_json::Value) -> Result<(), Box<dyn Error>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{CliError, parse_field_path};
+    use std::{error::Error, fs};
+
+    use uuid::Uuid;
+
+    use super::{CliError, load_bearer_token, parse_field_path};
 
     #[test]
     fn cli_field_paths_reject_empty_segments() {
@@ -514,5 +611,21 @@ mod tests {
             parse_field_path("nested..value"),
             Err(CliError::InvalidFieldPath)
         ));
+    }
+
+    #[test]
+    fn bearer_token_file_accepts_one_terminal_newline() -> Result<(), Box<dyn Error>> {
+        let path = std::env::temp_dir().join(format!("hyphae-token-{}", Uuid::now_v7()));
+        fs::write(&path, b"0123456789abcdef0123456789abcdef\n")?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
+        }
+        let token = load_bearer_token(Some(&path));
+        let _ignored = fs::remove_file(path);
+        assert!(token?.is_some());
+        Ok(())
     }
 }

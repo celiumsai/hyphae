@@ -1,0 +1,1172 @@
+// SPDX-License-Identifier: Apache-2.0
+
+use std::{
+    future::Future,
+    net::SocketAddr,
+    path::PathBuf,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
+
+use axum::{
+    Router,
+    body::{self, Body},
+    extract::{Extension, Request, State},
+    http::{HeaderMap, HeaderValue, StatusCode, header},
+    middleware::{self, Next},
+    response::{IntoResponse, Response},
+    routing::{get, post},
+};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+use hyphae_contracts::v1::{
+    CapabilitiesV1, CommitReceiptV1, DeleteRequestV1, GetRequestV1, GetResponseV1, HealthV1,
+    ProofV1, PutRequestV1, QueryRequestV1, QueryResponseV1, RecordV1, WitnessV1, decode_key_hex,
+    encode_hex,
+};
+use hyphae_core::current_version;
+use hyphae_engine::{EngineError, HyphaeEngine, ProofError, ProvenResult, ResultProofArtifact};
+use hyphae_storage::{AppendOutcome, LogError, SnapshotError, StorageError, verify_snapshot};
+use serde::{Serialize, de::DeserializeOwned};
+use tokio::{net::TcpListener, sync::Semaphore};
+use tokio_util::io::ReaderStream;
+use uuid::Uuid;
+
+use crate::{ApiError, BearerToken, ServerConfig, ServerError, ServerLimits};
+
+const FEATURES: [&str; 7] = [
+    "atomic_batch",
+    "deterministic_query",
+    "idempotency",
+    "kv",
+    "offline_result_proof",
+    "snapshot_witness",
+    "structured_aggregation",
+];
+
+#[derive(Clone, Debug)]
+struct RequestId(String);
+
+struct ServerState {
+    engine: Arc<Mutex<HyphaeEngine>>,
+    data_dir: PathBuf,
+    limits: ServerLimits,
+    bearer_token: Option<BearerToken>,
+    admission: Arc<Semaphore>,
+    ready: AtomicBool,
+}
+
+/// Opened optional HTTP surface owning exactly one embedded Hyphae engine.
+pub struct HyphaeServer {
+    bind: SocketAddr,
+    state: Arc<ServerState>,
+}
+
+impl HyphaeServer {
+    /// Validates secure defaults and opens the exclusively owned engine.
+    ///
+    /// No socket is opened by this method. In particular, a non-loopback bind
+    /// without authentication fails here before [`Self::bind`].
+    ///
+    /// # Errors
+    ///
+    /// Returns a configuration, data-directory lock, recovery, or corruption
+    /// error.
+    pub fn open(config: ServerConfig) -> Result<Self, ServerError> {
+        config.validate()?;
+        let opened = HyphaeEngine::open(config.data_dir())?;
+        let data_dir = opened.engine.data_path().to_path_buf();
+        Ok(Self {
+            bind: config.bind,
+            state: Arc::new(ServerState {
+                engine: Arc::new(Mutex::new(opened.engine)),
+                data_dir,
+                admission: Arc::new(Semaphore::new(config.limits.concurrent_operations)),
+                ready: AtomicBool::new(true),
+                limits: config.limits,
+                bearer_token: config.bearer_token,
+            }),
+        })
+    }
+
+    /// Opens the configured TCP listener and prepares graceful serving.
+    ///
+    /// # Errors
+    ///
+    /// Returns an operating-system socket bind failure.
+    pub async fn bind(self) -> Result<BoundServer, ServerError> {
+        let listener = TcpListener::bind(self.bind)
+            .await
+            .map_err(|source| ServerError::Bind {
+                address: self.bind,
+                source,
+            })?;
+        let local_addr = listener.local_addr().map_err(|source| ServerError::Bind {
+            address: self.bind,
+            source,
+        })?;
+        Ok(BoundServer {
+            listener,
+            local_addr,
+            router: build_router(self.state),
+        })
+    }
+
+    #[cfg(test)]
+    fn test_router(&self) -> Router {
+        build_router(Arc::clone(&self.state))
+    }
+}
+
+/// Successfully bound HTTP service awaiting a shutdown signal.
+pub struct BoundServer {
+    listener: TcpListener,
+    local_addr: SocketAddr,
+    router: Router,
+}
+
+impl BoundServer {
+    /// Returns the actual local address, including an assigned ephemeral port.
+    pub fn local_addr(&self) -> SocketAddr {
+        self.local_addr
+    }
+
+    /// Serves until the supplied graceful-shutdown future resolves.
+    ///
+    /// # Errors
+    ///
+    /// Returns an HTTP listener/service I/O failure.
+    pub async fn run_with_shutdown<F>(self, shutdown: F) -> Result<(), ServerError>
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        axum::serve(self.listener, self.router)
+            .with_graceful_shutdown(shutdown)
+            .await
+            .map_err(ServerError::Serve)
+    }
+}
+
+fn build_router(state: Arc<ServerState>) -> Router {
+    let public = Router::new()
+        .route("/v1/capabilities", get(capabilities))
+        .route("/v1/health/live", get(liveness))
+        .route("/v1/health/ready", get(readiness));
+    let protected = Router::new()
+        .route("/v1/kv/put", post(put_records))
+        .route("/v1/kv/get", post(get_record))
+        .route("/v1/kv/delete", post(delete_records))
+        .route("/v1/query", post(query_records))
+        .route(
+            "/v1/witnesses/{checkpoint_sequence}/{snapshot_digest}",
+            get(download_witness),
+        )
+        .route_layer(middleware::from_fn_with_state(
+            Arc::clone(&state),
+            authenticate,
+        ));
+
+    public
+        .merge(protected)
+        .fallback(route_not_found)
+        .method_not_allowed_fallback(method_not_allowed)
+        .with_state(state)
+        .layer(middleware::from_fn(assign_request_id))
+}
+
+async fn assign_request_id(mut request: Request, next: Next) -> Response {
+    let request_id = RequestId(Uuid::now_v7().to_string());
+    request.extensions_mut().insert(request_id.clone());
+    let mut response = next.run(request).await;
+    if let Ok(value) = HeaderValue::from_str(&request_id.0) {
+        response.headers_mut().insert("x-request-id", value);
+    }
+    response
+}
+
+async fn authenticate(
+    State(state): State<Arc<ServerState>>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let Some(expected) = &state.bearer_token else {
+        return next.run(request).await;
+    };
+    let request_id = request_id(&request);
+    if bearer_candidate(request.headers()).is_some_and(|candidate| expected.verifies(candidate)) {
+        return next.run(request).await;
+    }
+    ApiError::new(
+        StatusCode::UNAUTHORIZED,
+        "unauthorized",
+        "valid bearer authentication is required",
+        request_id,
+    )
+    .into_response()
+}
+
+fn bearer_candidate(headers: &HeaderMap) -> Option<&[u8]> {
+    let mut values = headers.get_all(header::AUTHORIZATION).iter();
+    let value = values.next()?;
+    if values.next().is_some() {
+        return None;
+    }
+    let value = value.as_bytes();
+    let separator = value.iter().position(|byte| *byte == b' ')?;
+    if !value[..separator].eq_ignore_ascii_case(b"bearer") {
+        return None;
+    }
+    let candidate = &value[separator.saturating_add(1)..];
+    (!candidate.is_empty()).then_some(candidate)
+}
+
+async fn liveness(
+    State(state): State<Arc<ServerState>>,
+    Extension(request_id): Extension<RequestId>,
+) -> Result<Response, ApiError> {
+    bounded_json(
+        &HealthV1 {
+            status: "live".to_owned(),
+        },
+        &state,
+        &request_id.0,
+    )
+}
+
+async fn readiness(
+    State(state): State<Arc<ServerState>>,
+    Extension(request_id): Extension<RequestId>,
+) -> Result<Response, ApiError> {
+    if !state.ready.load(Ordering::Acquire) {
+        return Err(ApiError::unavailable(&request_id.0));
+    }
+    bounded_json(
+        &HealthV1 {
+            status: "ready".to_owned(),
+        },
+        &state,
+        &request_id.0,
+    )
+}
+
+async fn capabilities(
+    State(state): State<Arc<ServerState>>,
+    Extension(request_id): Extension<RequestId>,
+) -> Result<Response, ApiError> {
+    let version = current_version();
+    bounded_json(
+        &CapabilitiesV1 {
+            api_version: version.api.to_owned(),
+            disk_format_version: version.disk_format,
+            features: FEATURES.iter().map(ToString::to_string).collect(),
+            limits: state.limits.as_contract(),
+        },
+        &state,
+        &request_id.0,
+    )
+}
+
+async fn put_records(
+    State(state): State<Arc<ServerState>>,
+    Extension(request_id): Extension<RequestId>,
+    request: Request,
+) -> Result<Response, ApiError> {
+    let request: PutRequestV1 = parse_json(request, &state, &request_id.0).await?;
+    validate_batch(request.records.len(), &state, &request_id.0)?;
+    let transaction_id = parse_transaction_id(request.transaction_id.as_deref(), &request_id.0)?;
+    let records = request
+        .records
+        .iter()
+        .map(RecordV1::to_domain)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| ApiError::invalid(&request_id.0))?;
+    let outcome = with_engine(Arc::clone(&state), &request_id.0, move |engine| {
+        capture_write_outcome(engine.put_records(transaction_id, &records))
+    })
+    .await?;
+    if outcome.requires_recovery {
+        state.ready.store(false, Ordering::Release);
+    }
+    bounded_json(&receipt(outcome.append), &state, &request_id.0)
+}
+
+async fn delete_records(
+    State(state): State<Arc<ServerState>>,
+    Extension(request_id): Extension<RequestId>,
+    request: Request,
+) -> Result<Response, ApiError> {
+    let request: DeleteRequestV1 = parse_json(request, &state, &request_id.0).await?;
+    validate_batch(request.keys_hex.len(), &state, &request_id.0)?;
+    let transaction_id = parse_transaction_id(request.transaction_id.as_deref(), &request_id.0)?;
+    let keys = request
+        .keys_hex
+        .iter()
+        .map(|key| decode_key_hex(key))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| ApiError::invalid(&request_id.0))?;
+    let outcome = with_engine(Arc::clone(&state), &request_id.0, move |engine| {
+        let keys = keys.iter().map(Vec::as_slice).collect::<Vec<_>>();
+        capture_write_outcome(engine.delete_records(transaction_id, &keys))
+    })
+    .await?;
+    if outcome.requires_recovery {
+        state.ready.store(false, Ordering::Release);
+    }
+    bounded_json(&receipt(outcome.append), &state, &request_id.0)
+}
+
+async fn get_record(
+    State(state): State<Arc<ServerState>>,
+    Extension(request_id): Extension<RequestId>,
+    request: Request,
+) -> Result<Response, ApiError> {
+    let request: GetRequestV1 = parse_json(request, &state, &request_id.0).await?;
+    let key = decode_key_hex(&request.key_hex).map_err(|_| ApiError::invalid(&request_id.0))?;
+    let artifact = with_engine(Arc::clone(&state), &request_id.0, move |engine| {
+        engine.get_record_with_proof(&key)
+    })
+    .await?;
+    let proof = proof_transport(&artifact, &state, &request_id.0)?;
+    let ProvenResult::Get(record) = artifact.proof.result() else {
+        return Err(ApiError::internal(&request_id.0));
+    };
+    let response = GetResponseV1 {
+        found: record.is_some(),
+        record: record.as_ref().map(RecordV1::from_domain),
+        proof,
+    };
+    bounded_json(&response, &state, &request_id.0)
+}
+
+async fn query_records(
+    State(state): State<Arc<ServerState>>,
+    Extension(request_id): Extension<RequestId>,
+    request: Request,
+) -> Result<Response, ApiError> {
+    let request: QueryRequestV1 = parse_json(request, &state, &request_id.0).await?;
+    let timeout = requested_timeout(request.timeout_ms, &state, &request_id.0)?;
+    let query = request
+        .to_domain()
+        .map_err(|_| ApiError::invalid(&request_id.0))?;
+    let mut execution_limits = state.limits.query.clone();
+    execution_limits.timeout = timeout;
+    let artifact = with_engine(Arc::clone(&state), &request_id.0, move |engine| {
+        engine.query_with_proof(&query, &execution_limits)
+    })
+    .await?;
+    let proof = proof_transport(&artifact, &state, &request_id.0)?;
+    let ProvenResult::Query(result) = artifact.proof.result() else {
+        return Err(ApiError::internal(&request_id.0));
+    };
+    bounded_json(
+        &QueryResponseV1::from_domain(result, proof),
+        &state,
+        &request_id.0,
+    )
+}
+
+async fn download_witness(
+    State(state): State<Arc<ServerState>>,
+    Extension(request_id): Extension<RequestId>,
+    request: Request,
+) -> Result<Response, ApiError> {
+    let (sequence, expected_digest) =
+        parse_witness_path(request.uri().path()).ok_or_else(|| ApiError::invalid(&request_id.0))?;
+    let path = state
+        .data_dir
+        .join("snapshots")
+        .join(format!("snapshot-{sequence:020}.hysnap"));
+    let permit = Arc::clone(&state.admission)
+        .try_acquire_owned()
+        .map_err(|_| busy(&request_id.0))?;
+    let verification_path = path.clone();
+    let verified = tokio::task::spawn_blocking(move || verify_snapshot(verification_path)).await;
+    drop(permit);
+    let info = match verified {
+        Ok(Ok(info)) => info,
+        Ok(Err(SnapshotError::Io(source))) if source.kind() == std::io::ErrorKind::NotFound => {
+            return Err(not_found(&request_id.0));
+        }
+        Ok(Err(_)) | Err(_) => return Err(ApiError::internal(&request_id.0)),
+    };
+    if info.checkpoint_sequence != sequence || info.snapshot_digest != expected_digest {
+        return Err(not_found(&request_id.0));
+    }
+    if info.file_bytes > state.limits.witness_bytes {
+        return Err(ApiError::limit(&request_id.0));
+    }
+    let file = tokio::fs::File::open(&path)
+        .await
+        .map_err(|_| ApiError::internal(&request_id.0))?;
+    let stream = ReaderStream::new(file);
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/octet-stream")
+        .header(header::CONTENT_LENGTH, info.file_bytes)
+        .header(
+            "digest",
+            format!("blake3={}", encode_hex(&info.snapshot_digest)),
+        )
+        .body(Body::from_stream(stream))
+        .map_err(|_| ApiError::internal(&request_id.0))
+}
+
+async fn parse_json<T: DeserializeOwned>(
+    request: Request,
+    state: &ServerState,
+    request_id: &str,
+) -> Result<T, ApiError> {
+    if !is_json_content_type(request.headers()) {
+        return Err(ApiError::new(
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "unsupported_media_type",
+            "content type must be application/json",
+            request_id,
+        ));
+    }
+    let bytes = tokio::time::timeout(
+        state.limits.request_body_timeout,
+        body::to_bytes(request.into_body(), state.limits.request_body_bytes),
+    )
+    .await
+    .map_err(|_| {
+        ApiError::new(
+            StatusCode::REQUEST_TIMEOUT,
+            "timeout",
+            "request body deadline elapsed without starting an operation",
+            request_id,
+        )
+    })?
+    .map_err(|_| ApiError::payload_too_large(request_id))?;
+    if bytes.is_empty() {
+        return Err(ApiError::invalid(request_id));
+    }
+    let value: serde_json::Value =
+        serde_json::from_slice(&bytes).map_err(|_| ApiError::invalid(request_id))?;
+    validate_json_shape(&value, state.limits.json_depth, state.limits.json_nodes)
+        .map_err(|()| ApiError::limit(request_id))?;
+    serde_json::from_value(value).map_err(|_| ApiError::invalid(request_id))
+}
+
+fn validate_json_shape(
+    root: &serde_json::Value,
+    maximum_depth: usize,
+    maximum_nodes: usize,
+) -> Result<(), ()> {
+    let mut stack = vec![(root, 0_usize)];
+    let mut nodes = 0_usize;
+    while let Some((value, depth)) = stack.pop() {
+        nodes = nodes.checked_add(1).ok_or(())?;
+        if nodes > maximum_nodes || depth > maximum_depth {
+            return Err(());
+        }
+        match value {
+            serde_json::Value::Array(values) => {
+                let next_depth = depth.checked_add(1).ok_or(())?;
+                stack.extend(values.iter().map(|value| (value, next_depth)));
+            }
+            serde_json::Value::Object(values) => {
+                let next_depth = depth.checked_add(1).ok_or(())?;
+                stack.extend(values.values().map(|value| (value, next_depth)));
+            }
+            serde_json::Value::Null
+            | serde_json::Value::Bool(_)
+            | serde_json::Value::Number(_)
+            | serde_json::Value::String(_) => {}
+        }
+    }
+    Ok(())
+}
+
+fn is_json_content_type(headers: &HeaderMap) -> bool {
+    let Some(value) = headers.get(header::CONTENT_TYPE) else {
+        return false;
+    };
+    let Ok(value) = value.to_str() else {
+        return false;
+    };
+    let media_type = value.split(';').next().unwrap_or_default().trim();
+    let media_type = media_type.to_ascii_lowercase();
+    media_type == "application/json"
+        || (media_type.starts_with("application/") && media_type.ends_with("+json"))
+}
+
+fn validate_batch(length: usize, state: &ServerState, request_id: &str) -> Result<(), ApiError> {
+    if length == 0 {
+        return Err(ApiError::invalid(request_id));
+    }
+    if length > state.limits.batch_items {
+        return Err(ApiError::limit(request_id));
+    }
+    Ok(())
+}
+
+fn parse_transaction_id(value: Option<&str>, request_id: &str) -> Result<Uuid, ApiError> {
+    value.map_or_else(
+        || Ok(Uuid::now_v7()),
+        |value| Uuid::parse_str(value).map_err(|_| ApiError::invalid(request_id)),
+    )
+}
+
+fn requested_timeout(
+    requested_ms: Option<u64>,
+    state: &ServerState,
+    request_id: &str,
+) -> Result<Duration, ApiError> {
+    let maximum_ms = u64::try_from(state.limits.query.timeout.as_millis()).unwrap_or(u64::MAX);
+    let requested_ms = requested_ms.unwrap_or(maximum_ms);
+    if requested_ms == 0 {
+        return Err(ApiError::invalid(request_id));
+    }
+    if requested_ms > maximum_ms {
+        return Err(ApiError::limit(request_id));
+    }
+    Ok(Duration::from_millis(requested_ms))
+}
+
+async fn with_engine<T, F>(
+    state: Arc<ServerState>,
+    request_id: &str,
+    operation: F,
+) -> Result<T, ApiError>
+where
+    T: Send + 'static,
+    F: FnOnce(&mut HyphaeEngine) -> Result<T, EngineError> + Send + 'static,
+{
+    if !state.ready.load(Ordering::Acquire) {
+        return Err(ApiError::unavailable(request_id));
+    }
+    let _permit = Arc::clone(&state.admission)
+        .try_acquire_owned()
+        .map_err(|_| busy(request_id))?;
+    let engine = Arc::clone(&state.engine);
+    let result = tokio::task::spawn_blocking(move || {
+        let mut engine = engine.lock().map_err(|_| EngineTaskError::Poisoned)?;
+        operation(&mut engine).map_err(EngineTaskError::Engine)
+    })
+    .await;
+    match result {
+        Ok(Ok(value)) => Ok(value),
+        Ok(Err(EngineTaskError::Engine(source))) => {
+            if engine_error_requires_recovery(&source) {
+                state.ready.store(false, Ordering::Release);
+            }
+            Err(ApiError::from_engine(source, request_id))
+        }
+        Ok(Err(EngineTaskError::Poisoned)) | Err(_) => {
+            state.ready.store(false, Ordering::Release);
+            Err(ApiError::internal(request_id))
+        }
+    }
+}
+
+enum EngineTaskError {
+    Engine(EngineError),
+    Poisoned,
+}
+
+struct WriteOutcome {
+    append: AppendOutcome,
+    requires_recovery: bool,
+}
+
+fn capture_write_outcome(
+    result: Result<AppendOutcome, EngineError>,
+) -> Result<WriteOutcome, EngineError> {
+    match result {
+        Ok(append) => Ok(WriteOutcome {
+            append,
+            requires_recovery: false,
+        }),
+        Err(EngineError::Storage(StorageError::CommittedButNotIndexed { receipt, .. })) => {
+            Ok(WriteOutcome {
+                append: AppendOutcome::Committed(receipt),
+                requires_recovery: true,
+            })
+        }
+        Err(source) => Err(source),
+    }
+}
+
+fn engine_error_requires_recovery(error: &EngineError) -> bool {
+    if matches!(
+        error,
+        EngineError::Proof(ProofError::ProofLimitExceeded { .. } | ProofError::LengthOverflow)
+    ) {
+        return false;
+    }
+    matches!(
+        error,
+        EngineError::Storage(
+            StorageError::Index { .. }
+                | StorageError::CommittedButNotIndexed { .. }
+                | StorageError::StaleIndex
+                | StorageError::Snapshot { .. }
+                | StorageError::DataDirectory(_)
+                | StorageError::Log(LogError::Poisoned)
+        ) | EngineError::Proof(_)
+    )
+}
+
+fn proof_transport(
+    artifact: &ResultProofArtifact,
+    state: &ServerState,
+    request_id: &str,
+) -> Result<ProofV1, ApiError> {
+    let encoded = artifact
+        .proof
+        .to_bytes()
+        .map_err(|source| ApiError::from_engine(EngineError::Proof(source), request_id))?;
+    if encoded.len() > state.limits.proof_bytes
+        || artifact.snapshot.file_bytes > state.limits.witness_bytes
+    {
+        return Err(ApiError::result_too_large(request_id));
+    }
+    let anchor = artifact.proof.anchor();
+    let snapshot_digest = encode_hex(&anchor.snapshot_digest);
+    Ok(ProofV1 {
+        encoding: "base64".to_owned(),
+        data: BASE64.encode(encoded),
+        proof_digest: encode_hex(&artifact.proof.proof_digest()),
+        anchor_digest: encode_hex(&artifact.proof.anchor_digest()),
+        checkpoint_sequence: anchor.checkpoint_sequence,
+        checkpoint_digest: anchor
+            .checkpoint_digest
+            .as_ref()
+            .map(|digest| encode_hex(digest)),
+        snapshot_digest: snapshot_digest.clone(),
+        witness: WitnessV1 {
+            path: format!(
+                "/v1/witnesses/{}/{}",
+                anchor.checkpoint_sequence, snapshot_digest
+            ),
+            file_bytes: artifact.snapshot.file_bytes,
+        },
+    })
+}
+
+fn receipt(outcome: AppendOutcome) -> CommitReceiptV1 {
+    let (status, receipt) = match outcome {
+        AppendOutcome::Committed(receipt) => ("committed", receipt),
+        AppendOutcome::Existing(receipt) => ("existing", receipt),
+    };
+    CommitReceiptV1 {
+        status: status.to_owned(),
+        transaction_id: receipt.transaction_id.to_string(),
+        commit_sequence: receipt.commit_sequence,
+        commit_digest: encode_hex(&receipt.commit_digest),
+        transaction_digest: encode_hex(&receipt.transaction_digest),
+    }
+}
+
+fn bounded_json<T: Serialize>(
+    value: &T,
+    state: &ServerState,
+    request_id: &str,
+) -> Result<Response, ApiError> {
+    let encoded = serde_json::to_vec(value).map_err(|_| ApiError::internal(request_id))?;
+    if encoded.len() > state.limits.response_bytes {
+        return Err(ApiError::result_too_large(request_id));
+    }
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::CONTENT_LENGTH, encoded.len())
+        .body(Body::from(encoded))
+        .map_err(|_| ApiError::internal(request_id))
+}
+
+fn parse_witness_path(path: &str) -> Option<(u64, [u8; 32])> {
+    let suffix = path.strip_prefix("/v1/witnesses/")?;
+    let mut components = suffix.split('/');
+    let sequence = components.next()?.parse().ok()?;
+    let digest = components.next()?;
+    if components.next().is_some()
+        || digest.len() != 64
+        || !digest
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return None;
+    }
+    let decoded = decode_key_hex(digest).ok()?;
+    decoded.try_into().ok().map(|digest| (sequence, digest))
+}
+
+fn request_id(request: &Request) -> String {
+    request
+        .extensions()
+        .get::<RequestId>()
+        .map_or_else(|| Uuid::now_v7().to_string(), |value| value.0.clone())
+}
+
+fn busy(request_id: &str) -> ApiError {
+    ApiError::new(
+        StatusCode::TOO_MANY_REQUESTS,
+        "busy",
+        "concurrent operation admission limit reached",
+        request_id,
+    )
+}
+
+fn not_found(request_id: &str) -> ApiError {
+    ApiError::new(
+        StatusCode::NOT_FOUND,
+        "not_found",
+        "requested version 1 resource does not exist",
+        request_id,
+    )
+}
+
+async fn route_not_found(Extension(request_id): Extension<RequestId>) -> ApiError {
+    not_found(&request_id.0)
+}
+
+async fn method_not_allowed(Extension(request_id): Extension<RequestId>) -> ApiError {
+    ApiError::new(
+        StatusCode::METHOD_NOT_ALLOWED,
+        "method_not_allowed",
+        "HTTP method is not defined for this version 1 route",
+        request_id.0,
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{error::Error, fs, net::Ipv4Addr, path::PathBuf, sync::Arc, time::Duration};
+
+    use axum::{body::Body, http::Request};
+    use serde_json::Value;
+    use tokio::{
+        io::{AsyncReadExt as _, AsyncWriteExt as _},
+        net::TcpStream,
+        sync::oneshot,
+    };
+    use tokio_util::io::ReaderStream;
+    use tower::ServiceExt;
+
+    use hyphae_engine::EngineError;
+    use hyphae_storage::{AppendOutcome, CommitReceipt, MaterializedIndexError, StorageError};
+
+    use super::{HyphaeServer, ServerConfig, StatusCode, body, capture_write_outcome};
+    use crate::{BearerToken, ServerConfigError};
+
+    struct TestDirectory {
+        path: PathBuf,
+    }
+
+    impl TestDirectory {
+        fn create(name: &str) -> Result<Self, Box<dyn Error>> {
+            let path = std::env::temp_dir().join(format!(
+                "hyphae-server-{name}-{}-{}",
+                std::process::id(),
+                uuid::Uuid::now_v7()
+            ));
+            fs::create_dir_all(&path)?;
+            Ok(Self { path })
+        }
+    }
+
+    impl Drop for TestDirectory {
+        fn drop(&mut self) {
+            let _ignored = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    #[test]
+    fn remote_bind_is_rejected_before_socket_bind() -> Result<(), Box<dyn Error>> {
+        let temporary = TestDirectory::create("remote-rejected")?;
+        let mut config = ServerConfig::new(&temporary.path);
+        config.bind = (Ipv4Addr::UNSPECIFIED, 8_787).into();
+        assert!(matches!(
+            HyphaeServer::open(config),
+            Err(crate::ServerError::Configuration(
+                ServerConfigError::RemoteBindRequiresAuthentication { .. }
+            ))
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn bearer_tokens_require_visible_header_safe_entropy() {
+        assert!(BearerToken::new("short").is_err());
+        assert!(BearerToken::new("0123456789abcdef0123456789abcde\n").is_err());
+        assert!(BearerToken::new("0123456789abcdef0123456789abcdef").is_ok());
+    }
+
+    #[test]
+    fn durable_unmaterialized_commit_keeps_its_public_receipt() -> Result<(), Box<dyn Error>> {
+        let receipt = CommitReceipt {
+            transaction_id: uuid::Uuid::now_v7(),
+            commit_sequence: 9,
+            commit_digest: [7; 32],
+            transaction_digest: [8; 32],
+        };
+        let outcome = capture_write_outcome(Err(EngineError::Storage(
+            StorageError::CommittedButNotIndexed {
+                receipt,
+                source: Box::new(MaterializedIndexError::MalformedCheckpoint),
+            },
+        )))?;
+        assert!(outcome.requires_recovery);
+        assert!(matches!(
+            outcome.append,
+            AppendOutcome::Committed(actual) if actual == receipt
+        ));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn authenticated_put_get_and_witness_are_contract_shaped() -> Result<(), Box<dyn Error>> {
+        let temporary = TestDirectory::create("authenticated-flow")?;
+        let secret = "correct-hyphae-token-material-0001";
+        let mut config = ServerConfig::new(&temporary.path);
+        config.bearer_token = Some(BearerToken::new(secret)?);
+        let app = HyphaeServer::open(config)?.test_router();
+
+        let unauthorized = app
+            .clone()
+            .oneshot(json_request("/v1/kv/put", r#"{"records":[]}"#, None)?)
+            .await?;
+        assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
+        assert!(unauthorized.headers().contains_key("x-request-id"));
+
+        let wrong = app
+            .clone()
+            .oneshot(json_request(
+                "/v1/kv/put",
+                r#"{"records":[]}"#,
+                Some("incorrect-hyphae-token-material-001"),
+            )?)
+            .await?;
+        assert_error(wrong, StatusCode::UNAUTHORIZED, "unauthorized").await?;
+
+        let duplicate_header = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/query")
+                    .header("content-type", "application/json")
+                    .header("authorization", format!("Bearer {secret}"))
+                    .header("authorization", format!("Bearer {secret}"))
+                    .body(Body::from(r#"{"limit":1}"#))?,
+            )
+            .await?;
+        assert_error(duplicate_header, StatusCode::UNAUTHORIZED, "unauthorized").await?;
+
+        let put = app
+            .clone()
+            .oneshot(json_request(
+                "/v1/kv/put",
+                r#"{"transaction_id":"018f0000-0000-7000-8000-000000000001","records":[{"key_hex":"61","value":{"score":7}}]}"#,
+                Some(secret),
+            )?)
+            .await?;
+        assert_eq!(put.status(), StatusCode::OK);
+        let put: Value = serde_json::from_slice(&response_bytes(put).await?)?;
+        assert_eq!(put["status"], "committed");
+
+        let retry = app
+            .clone()
+            .oneshot(json_request(
+                "/v1/kv/put",
+                r#"{"transaction_id":"018f0000-0000-7000-8000-000000000001","records":[{"key_hex":"61","value":{"score":7}}]}"#,
+                Some(secret),
+            )?)
+            .await?;
+        assert_eq!(retry.status(), StatusCode::OK);
+        let retry: Value = serde_json::from_slice(&response_bytes(retry).await?)?;
+        assert_eq!(retry["status"], "existing");
+
+        let conflict = app
+            .clone()
+            .oneshot(json_request(
+                "/v1/kv/put",
+                r#"{"transaction_id":"018f0000-0000-7000-8000-000000000001","records":[{"key_hex":"61","value":{"score":8}}]}"#,
+                Some(secret),
+            )?)
+            .await?;
+        assert_error(conflict, StatusCode::CONFLICT, "idempotency_conflict").await?;
+
+        let get = app
+            .clone()
+            .oneshot(json_request(
+                "/v1/kv/get",
+                r#"{"key_hex":"61"}"#,
+                Some(secret),
+            )?)
+            .await?;
+        assert_eq!(get.status(), StatusCode::OK);
+        let get: Value = serde_json::from_slice(&response_bytes(get).await?)?;
+        assert_eq!(get["found"], true);
+        assert_eq!(get["record"]["value"]["score"], 7);
+        assert_eq!(get["proof"]["encoding"], "base64");
+        let witness_path = get["proof"]["witness"]["path"]
+            .as_str()
+            .ok_or("missing witness path")?;
+
+        let witness = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(witness_path)
+                    .header("authorization", format!("Bearer {secret}"))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(witness.status(), StatusCode::OK);
+        assert!(witness.headers().contains_key("digest"));
+        assert!(response_bytes(witness).await?.starts_with(b"HYSNAP01"));
+
+        let query = app
+            .oneshot(json_request("/v1/query", r#"{"limit":10}"#, Some(secret))?)
+            .await?;
+        assert_eq!(query.status(), StatusCode::OK);
+        let query: Value = serde_json::from_slice(&response_bytes(query).await?)?;
+        assert_eq!(query["rows"].as_array().map(Vec::len), Some(1));
+        assert_eq!(query["proof"]["encoding"], "base64");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn public_routes_and_limit_failures_never_emit_framework_text()
+    -> Result<(), Box<dyn Error>> {
+        let temporary = TestDirectory::create("limits")?;
+        let mut config = ServerConfig::new(&temporary.path);
+        config.limits.request_body_bytes = 1_024;
+        config.limits.batch_items = 1;
+        let app = HyphaeServer::open(config)?.test_router();
+
+        let capabilities = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/capabilities")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(capabilities.status(), StatusCode::OK);
+        let capabilities: Value = serde_json::from_slice(&response_bytes(capabilities).await?)?;
+        assert_eq!(capabilities["api_version"], "v1");
+        assert_eq!(capabilities["limits"]["batch_items"], 1);
+
+        let too_many = app
+            .clone()
+            .oneshot(json_request(
+                "/v1/kv/delete",
+                r#"{"keys_hex":["61","62"]}"#,
+                None,
+            )?)
+            .await?;
+        assert_error(too_many, StatusCode::UNPROCESSABLE_ENTITY, "limit_exceeded").await?;
+
+        let unsupported = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/query")
+                    .header("content-type", "text/plain")
+                    .body(Body::from("{}"))?,
+            )
+            .await?;
+        assert_error(
+            unsupported,
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "unsupported_media_type",
+        )
+        .await?;
+
+        let oversized = app
+            .clone()
+            .oneshot(json_request(
+                "/v1/query",
+                &format!(r#"{{"limit":1,"ignored":"{}"}}"#, "x".repeat(2_000)),
+                None,
+            )?)
+            .await?;
+        assert_error(
+            oversized,
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "payload_too_large",
+        )
+        .await?;
+
+        let missing = app
+            .clone()
+            .oneshot(Request::builder().uri("/v1/unknown").body(Body::empty())?)
+            .await?;
+        assert_error(missing, StatusCode::NOT_FOUND, "not_found").await?;
+
+        let wrong_method = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/v1/health/live")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_error(
+            wrong_method,
+            StatusCode::METHOD_NOT_ALLOWED,
+            "method_not_allowed",
+        )
+        .await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn shape_proof_and_admission_limits_fail_without_partial_results()
+    -> Result<(), Box<dyn Error>> {
+        let temporary = TestDirectory::create("bounded-work")?;
+        let mut config = ServerConfig::new(&temporary.path);
+        config.limits.json_depth = 3;
+        config.limits.concurrent_operations = 1;
+        config.limits.proof_bytes = 128;
+        let server = HyphaeServer::open(config)?;
+        let app = server.test_router();
+
+        let too_deep = app
+            .clone()
+            .oneshot(json_request(
+                "/v1/query",
+                r#"{"filter":{"op":"not","filter":{"op":"not","filter":{"op":"not","filter":{"op":"match_all"}}}},"limit":1}"#,
+                None,
+            )?)
+            .await?;
+        assert_error(too_deep, StatusCode::UNPROCESSABLE_ENTITY, "limit_exceeded").await?;
+
+        let put = app
+            .clone()
+            .oneshot(json_request(
+                "/v1/kv/put",
+                r#"{"records":[{"key_hex":"61","value":1}]}"#,
+                None,
+            )?)
+            .await?;
+        assert_eq!(put.status(), StatusCode::OK);
+
+        let proof_too_large = app
+            .clone()
+            .oneshot(json_request("/v1/kv/get", r#"{"key_hex":"61"}"#, None)?)
+            .await?;
+        assert_error(
+            proof_too_large,
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "result_too_large",
+        )
+        .await?;
+
+        let permit = Arc::clone(&server.state.admission).try_acquire_owned()?;
+        let busy = app
+            .clone()
+            .oneshot(json_request("/v1/query", r#"{"limit":1}"#, None)?)
+            .await?;
+        drop(permit);
+        assert_error(busy, StatusCode::TOO_MANY_REQUESTS, "busy").await?;
+
+        server
+            .state
+            .ready
+            .store(false, std::sync::atomic::Ordering::Release);
+        let unavailable = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/health/ready")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_error(unavailable, StatusCode::SERVICE_UNAVAILABLE, "unavailable").await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn stalled_json_body_times_out_before_any_operation_starts() -> Result<(), Box<dyn Error>>
+    {
+        let temporary = TestDirectory::create("body-timeout")?;
+        let mut config = ServerConfig::new(&temporary.path);
+        config.limits.request_body_timeout = Duration::from_millis(5);
+        let app = HyphaeServer::open(config)?.test_router();
+        let (_writer, reader) = tokio::io::duplex(1);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/query")
+                    .header("content-type", "application/json")
+                    .body(Body::from_stream(ReaderStream::new(reader)))?,
+            )
+            .await?;
+        assert_error(response, StatusCode::REQUEST_TIMEOUT, "timeout").await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn bound_server_stops_on_graceful_shutdown() -> Result<(), Box<dyn Error>> {
+        let temporary = TestDirectory::create("graceful")?;
+        let mut config = ServerConfig::new(&temporary.path);
+        config.bind.set_port(0);
+        let bound = HyphaeServer::open(config)?.bind().await?;
+        let local_addr = bound.local_addr();
+        assert_ne!(local_addr.port(), 0);
+        let (send, receive) = oneshot::channel::<()>();
+        let serving = tokio::spawn(bound.run_with_shutdown(async move {
+            let _ignored = receive.await;
+        }));
+        let mut connection = TcpStream::connect(local_addr).await?;
+        connection
+            .write_all(
+                b"GET /v1/health/live HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+            )
+            .await?;
+        let mut response = Vec::new();
+        connection.read_to_end(&mut response).await?;
+        assert!(response.starts_with(b"HTTP/1.1 200 OK\r\n"));
+        assert!(response.ends_with(br#"{"status":"live"}"#));
+        let _ignored = send.send(());
+        serving.await??;
+        Ok(())
+    }
+
+    fn json_request(
+        uri: &str,
+        body: &str,
+        bearer: Option<&str>,
+    ) -> Result<Request<Body>, axum::http::Error> {
+        let mut request = Request::builder()
+            .method("POST")
+            .uri(uri)
+            .header("content-type", "application/json");
+        if let Some(bearer) = bearer {
+            request = request.header("authorization", format!("Bearer {bearer}"));
+        }
+        request.body(Body::from(body.to_owned()))
+    }
+
+    async fn response_bytes(
+        response: axum::response::Response,
+    ) -> Result<axum::body::Bytes, Box<dyn Error>> {
+        Ok(body::to_bytes(response.into_body(), 64 * 1024 * 1024).await?)
+    }
+
+    async fn assert_error(
+        response: axum::response::Response,
+        status: StatusCode,
+        code: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        assert_eq!(response.status(), status);
+        let header_request_id = response
+            .headers()
+            .get("x-request-id")
+            .and_then(|value| value.to_str().ok())
+            .ok_or("missing request ID header")?
+            .to_owned();
+        let value: Value = serde_json::from_slice(&response_bytes(response).await?)?;
+        assert_eq!(value["code"], code);
+        assert_eq!(value["request_id"], header_request_id);
+        Ok(())
+    }
+}

@@ -7,9 +7,9 @@ Rust. Its base experience is one `hyphae` binary and one data directory.
 > `0.1.0-alpha.1`; none of the `0.1.0` compatibility guarantees apply until
 > every release gate is green.
 
-The durable core, deterministic query/retrieval, and offline result-proof
-implementation are locally validated. Their cross-platform CI evidence
-remains open.
+The durable core, deterministic query/retrieval, offline result proofs, and
+secure optional `/v1` server are locally validated. Their cross-platform CI
+evidence remains open.
 
 ## Product contract
 
@@ -65,6 +65,7 @@ cargo doc --workspace --all-features --no-deps --locked
 ```
 
 Start with [`docs/quickstart.md`](docs/quickstart.md). See
+[`docs/api/v1.md`](docs/api/v1.md) for the optional server,
 [`docs/roadmap.md`](docs/roadmap.md) for execution order and
 [`docs/gates/0.1.0.md`](docs/gates/0.1.0.md) for the release definition of
 done.

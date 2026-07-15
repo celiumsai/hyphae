@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GetRequestV1",
+  "description": "Exact durable KV lookup.",
+  "type": "object",
+  "properties": {
+    "key_hex": {
+      "description": "Nonempty binary key encoded as hexadecimal.",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "key_hex"
+  ]
+}

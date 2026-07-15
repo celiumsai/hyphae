@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CommitReceiptV1",
+  "description": "Durable commit receipt.",
+  "type": "object",
+  "properties": {
+    "commit_digest": {
+      "description": "Commit-frame digest as hexadecimal.",
+      "type": "string"
+    },
+    "commit_sequence": {
+      "description": "Authoritative commit-frame sequence.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "status": {
+      "description": "`committed` for a new commit or `existing` for an exact retry.",
+      "type": "string"
+    },
+    "transaction_digest": {
+      "description": "Canonical transaction digest as hexadecimal.",
+      "type": "string"
+    },
+    "transaction_id": {
+      "description": "UUID idempotency identifier.",
+      "type": "string",
+      "format": "uuid"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "status",
+    "transaction_id",
+    "commit_sequence",
+    "commit_digest",
+    "transaction_digest"
+  ]
+}

@@ -1,9 +1,34 @@
 # Public contracts
 
-OpenAPI 3.1 and JSON Schema 2020-12 documents in this directory are the
-canonical wire definitions. The current files establish only health,
-capability, and error envelopes for the private alpha; data operations are
-added contract-first in Phase 5.
+`openapi/hyphae-v1.yaml` is the canonical HTTP surface and the JSON Schema
+2020-12 documents are the canonical payload definitions for `/v1`. The data
+operations are KV put/get/delete, deterministic structured query, and result
+proof witness download. Health and capabilities disclose no data.
 
-Generated Rust, TypeScript, and Python models must be reproducible from these
-documents, and generated-code drift is a CI failure.
+The Rust wire models in `hyphae-contracts` generate every checked-in schema.
+`cargo run -p hyphae-contracts --example generate_schemas` refreshes them and
+tests fail when generated and checked-in models differ. TypeScript and Python
+SDK generation in Phase 6 consumes only these versioned public documents.
+
+## Structured values
+
+The natural JSON surface accepts null, booleans, signed 64-bit integers,
+strings, arrays, and objects. Floating-point and out-of-range numbers are
+rejected. Opaque bytes use the exact reserved object form
+`{"$hyphae_bytes_hex":"00ff"}`; an object containing exactly that one key is
+therefore reserved and cannot represent an ordinary user object.
+
+Binary record keys are nonempty, even-length hexadecimal strings. Object-path
+segments cannot be empty. Runtime conversion enforces these semantic rules in
+addition to JSON Schema shape validation.
+
+Aggregation group keys use an explicit tagged form so a missing path remains
+distinct from a path whose value is JSON null. Sort cursors intentionally
+normalize both to null because their ordering semantics are identical.
+
+## Compatibility
+
+Unknown fields are rejected. A compatible `/v1` change may add optional
+fields or new endpoints without changing existing semantics. Removing a
+field, changing its meaning, or widening accepted data in a way that changes
+deterministic query/proof behavior requires a new versioned contract.
