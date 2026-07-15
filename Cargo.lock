@@ -289,6 +289,7 @@ name = "hyphae-query"
 version = "0.1.0-alpha.1"
 dependencies = [
  "hyphae-core",
+ "thiserror",
 ]
 
 [[package]]
@@ -296,6 +297,7 @@ name = "hyphae-retrieval"
 version = "0.1.0-alpha.1"
 dependencies = [
  "hyphae-core",
+ "thiserror",
 ]
 
 [[package]]
