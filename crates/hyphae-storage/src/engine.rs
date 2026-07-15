@@ -474,8 +474,8 @@ mod tests {
 
     use super::{CompactionOutcome, DurableLog, StorageEngine, StorageError, StorageManifest};
     use crate::{
-        AppendOutcome, DataDirectory, Mutation, SnapshotError, index::MaterializedIndex,
-        test_support::TestDirectory, verify_snapshot,
+        AppendOutcome, DataDirectory, Mutation, SnapshotError, SnapshotReadLimits,
+        index::MaterializedIndex, load_snapshot, test_support::TestDirectory, verify_snapshot,
     };
 
     #[test]
@@ -562,6 +562,24 @@ mod tests {
         assert_eq!(created.receipt_count, 1);
         assert_eq!(verify_snapshot(&created.path)?, created);
         assert_eq!(opened.storage.snapshot()?, created);
+        let witness = load_snapshot(&created.path, &SnapshotReadLimits::default())?;
+        assert_eq!(witness.info, created);
+        assert_eq!(witness.entries.len(), 2);
+        assert_eq!(witness.entries[0].key, b"alpha");
+        assert_eq!(witness.entries[0].value, b"first");
+        assert!(matches!(
+            load_snapshot(
+                &created.path,
+                &SnapshotReadLimits {
+                    entries: 1,
+                    ..SnapshotReadLimits::default()
+                }
+            ),
+            Err(SnapshotError::EntryLimitExceeded {
+                actual: 2,
+                maximum: 1
+            })
+        ));
 
         let corrupted_path = temporary.path().join("corrupted.hysnap");
         fs::copy(&created.path, &corrupted_path)?;

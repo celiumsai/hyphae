@@ -45,6 +45,46 @@ pub struct SnapshotInfo {
     pub file_bytes: u64,
 }
 
+/// Resource limits for loading a verified logical snapshot as an offline
+/// witness.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SnapshotReadLimits {
+    /// Maximum complete snapshot file length.
+    pub file_bytes: u64,
+    /// Maximum number of logical KV entries.
+    pub entries: u64,
+    /// Maximum aggregate decoded key and value bytes retained in memory.
+    pub decoded_bytes: u64,
+}
+
+impl Default for SnapshotReadLimits {
+    fn default() -> Self {
+        Self {
+            file_bytes: 512 * 1024 * 1024,
+            entries: 1_000_000,
+            decoded_bytes: 256 * 1024 * 1024,
+        }
+    }
+}
+
+/// One verified logical KV entry loaded from a canonical snapshot.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SnapshotEntry {
+    /// Nonempty binary key.
+    pub key: Vec<u8>,
+    /// Opaque stored value bytes.
+    pub value: Vec<u8>,
+}
+
+/// Fully verified logical snapshot contents for offline operations.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SnapshotContents {
+    /// Verified snapshot metadata and checkpoint anchor.
+    pub info: SnapshotInfo,
+    /// Strictly key-ordered logical entries.
+    pub entries: Vec<SnapshotEntry>,
+}
+
 /// Failure while creating or verifying a logical snapshot.
 #[derive(Debug, Error)]
 pub enum SnapshotError {
@@ -81,6 +121,31 @@ pub enum SnapshotError {
     CheckpointConflict {
         /// Conflicting commit sequence.
         sequence: u64,
+    },
+
+    /// Snapshot file length exceeds caller policy.
+    #[error("snapshot file length {actual} exceeds verification limit {maximum}")]
+    FileLimitExceeded {
+        /// Observed file length.
+        actual: u64,
+        /// Configured maximum.
+        maximum: u64,
+    },
+
+    /// Snapshot entry count exceeds caller policy.
+    #[error("snapshot entry count {actual} exceeds verification limit {maximum}")]
+    EntryLimitExceeded {
+        /// Observed entry count.
+        actual: u64,
+        /// Configured maximum.
+        maximum: u64,
+    },
+
+    /// Aggregate decoded entry bytes exceed caller policy.
+    #[error("snapshot decoded bytes exceed verification limit {maximum}")]
+    DecodedBytesLimitExceeded {
+        /// Configured maximum.
+        maximum: u64,
     },
 }
 
@@ -227,6 +292,34 @@ pub fn verify_snapshot(path: impl AsRef<Path>) -> Result<SnapshotInfo, SnapshotE
     })
 }
 
+/// Loads every logical KV entry from a verified snapshot under explicit
+/// resource limits.
+///
+/// The snapshot is verified before and after streaming to reject mutation
+/// during the read. Durable idempotency receipts are verified but are not
+/// retained in the returned witness.
+///
+/// # Errors
+///
+/// Returns a canonical snapshot error, I/O error, concurrent-change error, or
+/// resource-limit error.
+pub fn load_snapshot(
+    path: impl AsRef<Path>,
+    limits: &SnapshotReadLimits,
+) -> Result<SnapshotContents, SnapshotError> {
+    let path = path.as_ref();
+    let mut collector = SnapshotCollector {
+        entries: Vec::new(),
+        decoded_bytes: 0,
+        limits,
+    };
+    let info = read_snapshot_records_with_limits(path, &mut collector, Some(limits))?;
+    Ok(SnapshotContents {
+        info,
+        entries: collector.entries,
+    })
+}
+
 pub(crate) trait SnapshotRecordVisitor {
     fn put(&mut self, key: &[u8], value: &[u8]) -> Result<(), SnapshotError>;
     fn receipt(&mut self, receipt: &CommitReceipt) -> Result<(), SnapshotError>;
@@ -236,7 +329,18 @@ pub(crate) fn read_snapshot_records(
     path: &Path,
     visitor: &mut impl SnapshotRecordVisitor,
 ) -> Result<SnapshotInfo, SnapshotError> {
+    read_snapshot_records_with_limits(path, visitor, None)
+}
+
+fn read_snapshot_records_with_limits(
+    path: &Path,
+    visitor: &mut impl SnapshotRecordVisitor,
+    limits: Option<&SnapshotReadLimits>,
+) -> Result<SnapshotInfo, SnapshotError> {
     let before = verify_snapshot(path)?;
+    if let Some(limits) = limits {
+        validate_read_limits(&before, limits)?;
+    }
     let mut file = File::open(path)?;
     let file_bytes = file.metadata()?.len();
     let mut header = [0_u8; HEADER_LENGTH];
@@ -294,6 +398,78 @@ pub(crate) fn read_snapshot_records(
         });
     }
     Ok(after)
+}
+
+fn validate_read_limits(
+    info: &SnapshotInfo,
+    limits: &SnapshotReadLimits,
+) -> Result<(), SnapshotError> {
+    if info.file_bytes > limits.file_bytes {
+        return Err(SnapshotError::FileLimitExceeded {
+            actual: info.file_bytes,
+            maximum: limits.file_bytes,
+        });
+    }
+    if info.entry_count > limits.entries {
+        return Err(SnapshotError::EntryLimitExceeded {
+            actual: info.entry_count,
+            maximum: limits.entries,
+        });
+    }
+    Ok(())
+}
+
+struct SnapshotCollector<'limits> {
+    entries: Vec<SnapshotEntry>,
+    decoded_bytes: u64,
+    limits: &'limits SnapshotReadLimits,
+}
+
+impl SnapshotRecordVisitor for SnapshotCollector<'_> {
+    fn put(&mut self, key: &[u8], value: &[u8]) -> Result<(), SnapshotError> {
+        let next_entry_count = u64::try_from(self.entries.len())
+            .ok()
+            .and_then(|count| count.checked_add(1))
+            .ok_or(SnapshotError::EntryLimitExceeded {
+                actual: u64::MAX,
+                maximum: self.limits.entries,
+            })?;
+        if next_entry_count > self.limits.entries {
+            return Err(SnapshotError::EntryLimitExceeded {
+                actual: next_entry_count,
+                maximum: self.limits.entries,
+            });
+        }
+        let entry_bytes = u64::try_from(key.len())
+            .ok()
+            .and_then(|key_bytes| {
+                u64::try_from(value.len())
+                    .ok()
+                    .and_then(|value_bytes| key_bytes.checked_add(value_bytes))
+            })
+            .ok_or(SnapshotError::DecodedBytesLimitExceeded {
+                maximum: self.limits.decoded_bytes,
+            })?;
+        self.decoded_bytes = self.decoded_bytes.checked_add(entry_bytes).ok_or(
+            SnapshotError::DecodedBytesLimitExceeded {
+                maximum: self.limits.decoded_bytes,
+            },
+        )?;
+        if self.decoded_bytes > self.limits.decoded_bytes {
+            return Err(SnapshotError::DecodedBytesLimitExceeded {
+                maximum: self.limits.decoded_bytes,
+            });
+        }
+        self.entries.push(SnapshotEntry {
+            key: key.to_vec(),
+            value: value.to_vec(),
+        });
+        Ok(())
+    }
+
+    fn receipt(&mut self, _receipt: &CommitReceipt) -> Result<(), SnapshotError> {
+        Ok(())
+    }
 }
 
 #[derive(Clone, Copy, Debug)]

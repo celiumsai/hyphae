@@ -15,6 +15,16 @@ pub(crate) enum JsonValueError {
     NonIntegerNumber,
 }
 
+/// Failure decoding a fixed-length lowercase or uppercase hexadecimal value.
+#[derive(Clone, Debug, Error, Eq, PartialEq)]
+pub(crate) enum HexError {
+    #[error("hex value must contain exactly {expected} characters; found {actual}")]
+    Length { expected: usize, actual: usize },
+
+    #[error("hex value contains a non-hexadecimal character")]
+    Character,
+}
+
 pub(crate) fn parse_json(input: &str) -> Result<Value, JsonValueError> {
     let value =
         serde_json::from_str(input).map_err(|source| JsonValueError::Syntax(source.to_string()))?;
@@ -72,11 +82,38 @@ pub(crate) fn encode_hex(bytes: &[u8]) -> String {
     encoded
 }
 
+pub(crate) fn decode_hex<const N: usize>(encoded: &str) -> Result<[u8; N], HexError> {
+    let encoded = encoded.trim();
+    let expected = N.saturating_mul(2);
+    if encoded.len() != expected {
+        return Err(HexError::Length {
+            expected,
+            actual: encoded.len(),
+        });
+    }
+    let mut decoded = [0_u8; N];
+    for (index, pair) in encoded.as_bytes().chunks_exact(2).enumerate() {
+        let high = hex_nibble(pair[0]).ok_or(HexError::Character)?;
+        let low = hex_nibble(pair[1]).ok_or(HexError::Character)?;
+        decoded[index] = (high << 4) | low;
+    }
+    Ok(decoded)
+}
+
+fn hex_nibble(value: u8) -> Option<u8> {
+    match value {
+        b'0'..=b'9' => Some(value - b'0'),
+        b'a'..=b'f' => Some(value - b'a' + 10),
+        b'A'..=b'F' => Some(value - b'A' + 10),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use hyphae_query::Value;
 
-    use super::{JsonValueError, encode_hex, parse_json, to_json};
+    use super::{HexError, JsonValueError, decode_hex, encode_hex, parse_json, to_json};
 
     #[test]
     fn json_round_trips_the_cli_subset() -> Result<(), JsonValueError> {
@@ -93,5 +130,19 @@ mod tests {
             to_json(&Value::Bytes(vec![1, 2])),
             serde_json::json!({"$hyphae_bytes_hex": "0102"})
         );
+    }
+
+    #[test]
+    fn fixed_hex_round_trips_and_rejects_bad_input() {
+        assert_eq!(decode_hex::<4>("000f10FF"), Ok([0, 15, 16, 255]));
+        assert_eq!(decode_hex::<2>(" 00ff\r\n"), Ok([0, 255]));
+        assert_eq!(
+            decode_hex::<4>("00"),
+            Err(HexError::Length {
+                expected: 8,
+                actual: 2
+            })
+        );
+        assert_eq!(decode_hex::<1>("xz"), Err(HexError::Character));
     }
 }

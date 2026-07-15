@@ -63,10 +63,47 @@ black-box test in `crates/hyphae-cli/tests/single_binary.rs` executes this
 complete flow, including durable idempotency and a fresh process for every
 command.
 
+## Prove and verify a result offline
+
+Create a portable proof while querying:
+
+```bash
+./target/release/hyphae query \
+  --sort score --descending --limit 2 \
+  --proof-out result.hyproof
+```
+
+The JSON response includes `proof.snapshot_path`, `proof.anchor_digest`, and
+`proof.proof_digest`. Pin the anchor digest through a channel trusted by the
+verifier, transfer or retain the proof and referenced snapshot, then run:
+
+```bash
+./target/release/hyphae verify \
+  --proof result.hyproof \
+  --snapshot '<proof.snapshot_path>' \
+  --anchor '<proof.anchor_digest>'
+```
+
+PowerShell can pass the returned fields directly:
+
+```powershell
+$proven = .\target\release\hyphae.exe query `
+  --sort score --descending --limit 2 `
+  --proof-out result.hyproof | ConvertFrom-Json
+.\target\release\hyphae.exe verify `
+  --proof result.hyproof `
+  --snapshot $proven.proof.snapshot_path `
+  --anchor $proven.proof.anchor_digest
+```
+
+`verify` checks both artifacts, compares the expected anchor, decodes the
+complete snapshot, reexecutes the embedded operation, and requires an exact
+result match. It does not open a live data directory or contact the network.
+
 ## Current boundary
 
-This phase exposes durable KV documents, deterministic structured query,
-snapshot, and compaction. Offline result proofs arrive in phase 4; the
+The current implementation exposes durable KV documents, deterministic
+structured query, snapshot, compaction, and offline result proofs. The
 OpenAPI-first `/v1` server arrives in phase 5. Semantic retrieval already has
 provider-neutral exact reference semantics, but no embedding provider is
 enabled or required.

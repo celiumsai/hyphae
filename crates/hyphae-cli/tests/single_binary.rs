@@ -36,6 +36,20 @@ fn run(data_directory: &Path, arguments: &[&str]) -> Result<serde_json::Value, B
         .arg("--data-dir")
         .arg(data_directory)
         .output()?;
+    decode_output(&output, arguments)
+}
+
+fn run_without_data(arguments: &[&str]) -> Result<serde_json::Value, Box<dyn Error>> {
+    let output = Command::new(env!("CARGO_BIN_EXE_hyphae"))
+        .args(arguments)
+        .output()?;
+    decode_output(&output, arguments)
+}
+
+fn decode_output(
+    output: &std::process::Output,
+    arguments: &[&str],
+) -> Result<serde_json::Value, Box<dyn Error>> {
     if !output.status.success() {
         return Err(std::io::Error::other(format!(
             "hyphae {:?} failed: {}",
@@ -108,6 +122,39 @@ fn one_binary_persists_queries_and_compacts_without_external_services() -> Resul
     )?;
     assert_eq!(before["rows"][0]["key_hex"], "62657461");
     assert_eq!(before["rows"][1]["key_hex"], "616c706861");
+
+    let proof_path = data_directory.path.join("query.hyproof");
+    let proof_path_string = proof_path.to_string_lossy().into_owned();
+    let proven = run(
+        &data_directory.path,
+        &[
+            "query",
+            "--sort",
+            "score",
+            "--descending",
+            "--limit",
+            "2",
+            "--proof-out",
+            &proof_path_string,
+        ],
+    )?;
+    assert_eq!(proven["rows"], before["rows"]);
+    let snapshot_path = proven["proof"]["snapshot_path"]
+        .as_str()
+        .ok_or_else(|| std::io::Error::other("missing snapshot path"))?;
+    let anchor = proven["proof"]["anchor_digest"]
+        .as_str()
+        .ok_or_else(|| std::io::Error::other("missing anchor digest"))?;
+    let verified = run_without_data(&[
+        "verify",
+        "--proof",
+        &proof_path_string,
+        "--snapshot",
+        snapshot_path,
+        "--anchor",
+        anchor,
+    ])?;
+    assert_eq!(verified["status"], "verified");
 
     let snapshot = run(&data_directory.path, &["snapshot"])?;
     assert_eq!(snapshot["entry_count"], 2);

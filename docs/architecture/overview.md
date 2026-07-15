@@ -57,6 +57,12 @@ matrix is defined in [`compaction-v1.md`](../storage/compaction-v1.md).
 were proven. Provenance joins the same facade in phase 4; delivery surfaces do
 not bypass its public semantics.
 
+Result proof v1 references a canonical logical snapshot as its complete
+offline witness. The verifier checks the pinned snapshot/log anchor and
+reexecutes the operation from that witness, so arbitrary query completeness
+does not depend on an unauthenticated materialized query index. See
+[`result-proof-v1.md`](../provenance/result-proof-v1.md).
+
 ## Data directory
 
 ```text

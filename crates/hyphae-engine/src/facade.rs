@@ -15,7 +15,9 @@ use hyphae_storage::{
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::{DocumentError, decode_document, encode_document};
+use crate::{
+    DocumentError, ProofError, ResultProof, ResultProofArtifact, decode_document, encode_document,
+};
 
 /// Failure while operating the embeddable Hyphae facade.
 #[derive(Debug, Error)]
@@ -35,6 +37,10 @@ pub enum EngineError {
     /// Exact semantic retrieval failed.
     #[error(transparent)]
     Retrieval(#[from] RetrievalError),
+
+    /// Canonical result-proof creation failed.
+    #[error(transparent)]
+    Proof(#[from] ProofError),
 
     /// One atomic document batch repeats a key.
     #[error("atomic document batch contains a duplicate key")]
@@ -151,6 +157,19 @@ impl HyphaeEngine {
             .transpose()
     }
 
+    /// Gets one structured record and binds the complete result, including
+    /// absence, to a canonical snapshot witness.
+    ///
+    /// # Errors
+    ///
+    /// Returns a key, storage, document, snapshot, or result-proof error.
+    pub fn get_record_with_proof(&self, key: &[u8]) -> Result<ResultProofArtifact, EngineError> {
+        let result = self.get_record(key)?;
+        let snapshot = self.snapshot()?;
+        let proof = ResultProof::for_get(&snapshot, key.to_vec(), result)?;
+        Ok(ResultProofArtifact { proof, snapshot })
+    }
+
     /// Executes deterministic structured query over all durable documents.
     ///
     /// Storage scan and document decoding consume the same wall-clock timeout;
@@ -213,6 +232,24 @@ impl HyphaeEngine {
             ..limits.clone()
         };
         Ok(execute(&[records.as_slice()], query, &execution_limits)?)
+    }
+
+    /// Executes one structured query and binds its complete logical result to
+    /// a canonical snapshot witness at the same locked checkpoint.
+    ///
+    /// # Errors
+    ///
+    /// Returns any ordinary query error plus snapshot or proof creation
+    /// failures. No proof is returned for a partial or failed query.
+    pub fn query_with_proof(
+        &self,
+        query: &Query,
+        limits: &ExecutionLimits,
+    ) -> Result<ResultProofArtifact, EngineError> {
+        let result = self.query(query, limits)?;
+        let snapshot = self.snapshot()?;
+        let proof = ResultProof::for_query(&snapshot, query.clone(), result)?;
+        Ok(ResultProofArtifact { proof, snapshot })
     }
 
     /// Executes exact provider-neutral vector retrieval without persisting or

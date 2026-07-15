@@ -21,5 +21,18 @@ rewrite both history and its local roots. External signatures or anchors may
 strengthen that model later, but they are optional and never required for the
 base engine.
 
-The detailed proof and server threat models must be accepted before Phases 4
-and 5 close.
+The result-proof model below is the accepted Phase 4 trust decision. The
+detailed server threat model must be accepted before Phase 5 closes.
+
+## Result-proof trust model
+
+Result proof v1 uses a canonical logical snapshot as the complete offline
+witness. The verifier checks the proof, checks the snapshot, reexecutes the
+embedded operation, and compares the complete result. This detects edits,
+insertions, deletions, reordering, truncation, and bit flips in either
+artifact.
+
+Rollback and replay detection require the caller to supply an expected anchor
+digest that was pinned outside the proof/snapshot pair. Self-consistency alone
+is useful for diagnostics but is not trusted verification. The normative
+contract is [`result-proof-v1.md`](../provenance/result-proof-v1.md).

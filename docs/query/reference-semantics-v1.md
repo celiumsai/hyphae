@@ -6,7 +6,8 @@ Status: normative for the internal pre-`0.1.0` reference executor.
 
 A record has one nonempty globally unique binary key and one typed value.
 Object field paths are ordered lists of exact UTF-8 keys; an empty path selects
-the root. Traversal through a non-object or absent key is missing.
+the root, while an empty segment is invalid. Traversal through a non-object or
+absent key is missing.
 
 The total value order is:
 
@@ -61,9 +62,9 @@ plan emits no groups for zero matches.
 
 ## Budgets and timeout
 
-Before execution, shape limits validate filter nodes, sort fields, grouping
-fields, metric count, and requested page size. During execution, global scan,
-matched-record, and group budgets are checked before allocation grows beyond
-the limit. A caller-visible monotonic timeout is checked cooperatively during
-scan, aggregation, and after sort. Any exceeded budget returns an error and no
-partial result.
+Before execution, shape limits validate filter nodes and recursion depth, sort
+fields, grouping fields, metric count, and requested page size. During
+execution, global scan, matched-record, and group budgets are checked before
+allocation grows beyond the limit. A caller-visible monotonic timeout is
+checked cooperatively during scan, aggregation, and after sort. Any exceeded
+budget returns an error and no partial result.

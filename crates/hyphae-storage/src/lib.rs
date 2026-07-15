@@ -22,7 +22,10 @@ pub use log::{
 };
 pub use manifest::ManifestError;
 pub use mutation::{MAX_KEY_BYTES, Mutation, MutationError};
-pub use snapshot::{SnapshotError, SnapshotInfo, verify_snapshot};
+pub use snapshot::{
+    SnapshotContents, SnapshotEntry, SnapshotError, SnapshotInfo, SnapshotReadLimits,
+    load_snapshot, verify_snapshot,
+};
 
 #[cfg(test)]
 mod test_support {

@@ -12,7 +12,10 @@ use std::{
 
 use clap::{Parser, Subcommand};
 use hyphae_core::current_version;
-use hyphae_engine::HyphaeEngine;
+use hyphae_engine::{
+    HyphaeEngine, ProvenResult, ResultProofArtifact, VerificationLimits, verify_result_proof,
+    write_result_proof,
+};
 use hyphae_query::{
     Cursor, ExecutionLimits, FieldPath, Filter, MetricValue, NullPlacement, Query, Record,
     SortDirection, SortField,
@@ -22,12 +25,15 @@ use serde_json::json;
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::json_value::{encode_hex, parse_json, to_json};
+use crate::json_value::{decode_hex, encode_hex, parse_json, to_json};
 
 #[derive(Debug, Error, Eq, PartialEq)]
 enum CliError {
     #[error("field path must contain nonempty dot-separated segments")]
     InvalidFieldPath,
+
+    #[error("result proof contains an unexpected operation/result variant")]
+    UnexpectedProofResult,
 }
 
 #[derive(Debug, Parser)]
@@ -72,6 +78,9 @@ enum Command {
         /// UTF-8 key.
         #[arg(long)]
         key: String,
+        /// Write a portable result proof to a new file.
+        #[arg(long)]
+        proof_out: Option<PathBuf>,
     },
     /// Atomically delete one structured document.
     Delete {
@@ -108,6 +117,9 @@ enum Command {
         /// Final page size after global ordering.
         #[arg(long, default_value_t = 100)]
         limit: usize,
+        /// Write a portable result proof to a new file.
+        #[arg(long)]
+        proof_out: Option<PathBuf>,
     },
     /// Create or reuse a verified logical snapshot.
     Snapshot {
@@ -121,6 +133,18 @@ enum Command {
         #[arg(long, env = "HYPHAE_DATA_DIR")]
         data_dir: PathBuf,
     },
+    /// Verify a result proof completely offline.
+    Verify {
+        /// Canonical `.hyproof` file.
+        #[arg(long)]
+        proof: PathBuf,
+        /// Canonical logical snapshot witness referenced by the proof.
+        #[arg(long)]
+        snapshot: PathBuf,
+        /// Trusted 32-byte anchor digest as hexadecimal.
+        #[arg(long)]
+        anchor: String,
+    },
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -132,7 +156,11 @@ fn main() -> Result<(), Box<dyn Error>> {
             value,
             transaction_id,
         } => put(&data_dir, key, &value, transaction_id),
-        Command::Get { data_dir, key } => get(&data_dir, key.as_bytes()),
+        Command::Get {
+            data_dir,
+            key,
+            proof_out,
+        } => get(&data_dir, key.as_bytes(), proof_out.as_deref()),
         Command::Delete {
             data_dir,
             key,
@@ -146,6 +174,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             descending,
             nulls_first,
             limit,
+            proof_out,
         } => query(
             &data_dir,
             QueryArguments {
@@ -155,10 +184,16 @@ fn main() -> Result<(), Box<dyn Error>> {
                 descending,
                 nulls_first,
                 limit,
+                proof_out,
             },
         ),
         Command::Snapshot { data_dir } => snapshot(&data_dir),
         Command::Compact { data_dir } => compact(&data_dir),
+        Command::Verify {
+            proof,
+            snapshot,
+            anchor,
+        } => verify(&proof, &snapshot, &anchor),
     }
 }
 
@@ -197,17 +232,23 @@ fn put(
     print_json(&receipt_json(outcome))
 }
 
-fn get(data_dir: &Path, key: &[u8]) -> Result<(), Box<dyn Error>> {
+fn get(data_dir: &Path, key: &[u8], proof_out: Option<&Path>) -> Result<(), Box<dyn Error>> {
     let opened = HyphaeEngine::open(data_dir)?;
-    let value = opened.engine.get_record(key)?.map(|record| {
-        json!({
-            "key_hex": encode_hex(&record.key),
-            "value": to_json(&record.value),
-        })
-    });
+    let (record, proof) = if let Some(proof_path) = proof_out {
+        let artifact = opened.engine.get_record_with_proof(key)?;
+        write_result_proof(proof_path, &artifact.proof)?;
+        let ProvenResult::Get(record) = artifact.proof.result() else {
+            return Err(CliError::UnexpectedProofResult.into());
+        };
+        (record.clone(), Some(proof_json(proof_path, &artifact)))
+    } else {
+        (opened.engine.get_record(key)?, None)
+    };
+    let value = record.as_ref().map(record_json);
     print_json(&json!({
         "found": value.is_some(),
         "record": value,
+        "proof": proof,
     }))
 }
 
@@ -226,6 +267,7 @@ struct QueryArguments {
     descending: bool,
     nulls_first: bool,
     limit: usize,
+    proof_out: Option<PathBuf>,
 }
 
 fn query(data_dir: &Path, arguments: QueryArguments) -> Result<(), Box<dyn Error>> {
@@ -266,23 +308,44 @@ fn query(data_dir: &Path, arguments: QueryArguments) -> Result<(), Box<dyn Error
         aggregation: None,
     };
     let opened = HyphaeEngine::open(data_dir)?;
-    let result = opened.engine.query(&request, &ExecutionLimits::default())?;
-    let rows = result
-        .rows
-        .iter()
-        .map(|record| {
-            json!({
-                "key_hex": encode_hex(&record.key),
-                "value": to_json(&record.value),
-            })
-        })
-        .collect::<Vec<_>>();
+    let (result, proof) = if let Some(proof_path) = arguments.proof_out.as_deref() {
+        let artifact = opened
+            .engine
+            .query_with_proof(&request, &ExecutionLimits::default())?;
+        write_result_proof(proof_path, &artifact.proof)?;
+        let ProvenResult::Query(result) = artifact.proof.result() else {
+            return Err(CliError::UnexpectedProofResult.into());
+        };
+        (result.clone(), Some(proof_json(proof_path, &artifact)))
+    } else {
+        (
+            opened.engine.query(&request, &ExecutionLimits::default())?,
+            None,
+        )
+    };
+    print_json(&query_result_json(&result, proof.as_ref()))
+}
+
+fn verify(
+    proof_path: &Path,
+    snapshot_path: &Path,
+    encoded_anchor: &str,
+) -> Result<(), Box<dyn Error>> {
+    let expected_anchor = decode_hex::<32>(encoded_anchor)?;
+    let report = verify_result_proof(
+        proof_path,
+        snapshot_path,
+        expected_anchor,
+        &VerificationLimits::default(),
+    )?;
     print_json(&json!({
-        "rows": rows,
-        "next_cursor": result.next_cursor.as_ref().map(cursor_json),
-        "aggregation": result.aggregation.as_ref().map(aggregation_json),
-        "scanned_records": result.scanned_records,
-        "matched_records": result.matched_records,
+        "status": "verified",
+        "anchor_digest": encode_hex(&report.anchor_digest),
+        "proof_digest": encode_hex(&report.proof_digest),
+        "checkpoint_sequence": report.anchor.checkpoint_sequence,
+        "checkpoint_digest": report.anchor.checkpoint_digest.map(|digest| encode_hex(&digest)),
+        "snapshot_digest": encode_hex(&report.anchor.snapshot_digest),
+        "result": proven_result_json(&report.result),
     }))
 }
 
@@ -315,6 +378,53 @@ fn parse_field_path(path: &str) -> Result<FieldPath, CliError> {
         return Err(CliError::InvalidFieldPath);
     }
     Ok(FieldPath::new(segments))
+}
+
+fn proof_json(path: &Path, artifact: &ResultProofArtifact) -> serde_json::Value {
+    json!({
+        "path": path,
+        "snapshot_path": artifact.snapshot.path,
+        "checkpoint_sequence": artifact.proof.anchor().checkpoint_sequence,
+        "checkpoint_digest": artifact.proof.anchor().checkpoint_digest.map(|digest| encode_hex(&digest)),
+        "snapshot_digest": encode_hex(&artifact.proof.anchor().snapshot_digest),
+        "anchor_digest": encode_hex(&artifact.proof.anchor_digest()),
+        "proof_digest": encode_hex(&artifact.proof.proof_digest()),
+    })
+}
+
+fn record_json(record: &Record) -> serde_json::Value {
+    json!({
+        "key_hex": encode_hex(&record.key),
+        "value": to_json(&record.value),
+    })
+}
+
+fn query_result_json(
+    result: &hyphae_query::QueryResult,
+    proof: Option<&serde_json::Value>,
+) -> serde_json::Value {
+    json!({
+        "rows": result.rows.iter().map(record_json).collect::<Vec<_>>(),
+        "next_cursor": result.next_cursor.as_ref().map(cursor_json),
+        "aggregation": result.aggregation.as_ref().map(aggregation_json),
+        "scanned_records": result.scanned_records,
+        "matched_records": result.matched_records,
+        "proof": proof,
+    })
+}
+
+fn proven_result_json(result: &ProvenResult) -> serde_json::Value {
+    match result {
+        ProvenResult::Get(record) => json!({
+            "type": "get",
+            "found": record.is_some(),
+            "record": record.as_ref().map(record_json),
+        }),
+        ProvenResult::Query(result) => json!({
+            "type": "query",
+            "result": query_result_json(result, None),
+        }),
+    }
 }
 
 fn receipt_json(outcome: AppendOutcome) -> serde_json::Value {

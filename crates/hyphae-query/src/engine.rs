@@ -47,6 +47,15 @@ pub enum QueryError {
         maximum: usize,
     },
 
+    /// Filter recursion is too deep.
+    #[error("filter depth is {actual}; maximum is {maximum}")]
+    FilterDepthExceeded {
+        /// Observed recursive depth, counting the root as one.
+        actual: usize,
+        /// Configured maximum.
+        maximum: usize,
+    },
+
     /// Too many explicit sort fields were requested.
     #[error("query has {actual} sort fields; maximum is {maximum}")]
     SortFieldsExceeded {
@@ -76,6 +85,10 @@ pub enum QueryError {
     /// A prefix filter literal is not a string or bytes value.
     #[error("prefix filter requires a string or bytes literal")]
     InvalidPrefixType,
+
+    /// Field-path segments must be nonempty UTF-8 strings.
+    #[error("field path contains an empty segment")]
+    InvalidFieldPath,
 
     /// Too many group fields were requested.
     #[error("aggregation has {actual} group fields; maximum is {maximum}")]
@@ -321,13 +334,20 @@ pub fn validate_query(query: &Query, limits: &ExecutionLimits) -> Result<(), Que
             maximum: limits.max_returned_records,
         });
     }
-    let filter_nodes = count_filter_nodes(&query.filter);
+    let (filter_nodes, filter_depth) = filter_shape(&query.filter);
     if filter_nodes > limits.max_filter_nodes {
         return Err(QueryError::FilterNodesExceeded {
             actual: filter_nodes,
             maximum: limits.max_filter_nodes,
         });
     }
+    if filter_depth > limits.max_filter_depth {
+        return Err(QueryError::FilterDepthExceeded {
+            actual: filter_depth,
+            maximum: limits.max_filter_depth,
+        });
+    }
+    validate_field_paths(query)?;
     validate_prefixes(&query.filter)?;
     if query.sort.len() > limits.max_sort_fields {
         return Err(QueryError::SortFieldsExceeded {
@@ -344,14 +364,67 @@ pub fn validate_query(query: &Query, limits: &ExecutionLimits) -> Result<(), Que
     Ok(())
 }
 
-fn count_filter_nodes(filter: &Filter) -> usize {
+fn validate_field_paths(query: &Query) -> Result<(), QueryError> {
+    let mut filters = vec![&query.filter];
+    while let Some(filter) = filters.pop() {
+        let path = match filter {
+            Filter::Exists(path)
+            | Filter::Compare { path, .. }
+            | Filter::Prefix { path, .. }
+            | Filter::Contains { path, .. } => Some(path),
+            Filter::All(children) | Filter::Any(children) => {
+                filters.extend(children);
+                None
+            }
+            Filter::Not(child) => {
+                filters.push(child);
+                None
+            }
+            Filter::MatchAll => None,
+        };
+        if path.is_some_and(path_has_empty_segment) {
+            return Err(QueryError::InvalidFieldPath);
+        }
+    }
+    if query
+        .sort
+        .iter()
+        .any(|field| path_has_empty_segment(&field.path))
+    {
+        return Err(QueryError::InvalidFieldPath);
+    }
+    if let Some(plan) = &query.aggregation
+        && (plan.group_by.iter().any(path_has_empty_segment)
+            || plan.metrics.iter().any(|metric| match &metric.metric {
+                Metric::Count => false,
+                Metric::Sum(path) | Metric::Min(path) | Metric::Max(path) => {
+                    path_has_empty_segment(path)
+                }
+            }))
+    {
+        return Err(QueryError::InvalidFieldPath);
+    }
+    Ok(())
+}
+
+fn path_has_empty_segment(path: &FieldPath) -> bool {
+    path.segments().iter().any(String::is_empty)
+}
+
+fn filter_shape(filter: &Filter) -> (usize, usize) {
     let mut count = 0_usize;
-    let mut pending = vec![filter];
-    while let Some(current) = pending.pop() {
+    let mut maximum_depth = 0_usize;
+    let mut pending = vec![(filter, 1_usize)];
+    while let Some((current, depth)) = pending.pop() {
         count = count.saturating_add(1);
+        maximum_depth = maximum_depth.max(depth);
         match current {
-            Filter::All(children) | Filter::Any(children) => pending.extend(children),
-            Filter::Not(child) => pending.push(child),
+            Filter::All(children) | Filter::Any(children) => pending.extend(
+                children
+                    .iter()
+                    .map(|child| (child, depth.saturating_add(1))),
+            ),
+            Filter::Not(child) => pending.push((child, depth.saturating_add(1))),
             Filter::MatchAll
             | Filter::Exists(_)
             | Filter::Compare { .. }
@@ -359,7 +432,7 @@ fn count_filter_nodes(filter: &Filter) -> usize {
             | Filter::Contains { .. } => {}
         }
     }
-    count
+    (count, maximum_depth)
 }
 
 fn validate_prefixes(filter: &Filter) -> Result<(), QueryError> {
@@ -932,6 +1005,31 @@ mod tests {
                 actual: 2,
                 maximum: 1
             })
+        );
+
+        let depth_limits = ExecutionLimits {
+            max_filter_depth: 1,
+            ..ExecutionLimits::default()
+        };
+        assert_eq!(
+            execute(&[records.as_slice()], &nested, &depth_limits),
+            Err(QueryError::FilterDepthExceeded {
+                actual: 2,
+                maximum: 1
+            })
+        );
+
+        let empty_segment = Query {
+            filter: Filter::Exists(FieldPath::new(["nested", ""])),
+            ..query(1)
+        };
+        assert_eq!(
+            execute(
+                &[records.as_slice()],
+                &empty_segment,
+                &ExecutionLimits::default()
+            ),
+            Err(QueryError::InvalidFieldPath)
         );
 
         let malformed_cursor = Query {

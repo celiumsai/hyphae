@@ -177,6 +177,8 @@ pub struct ExecutionLimits {
     pub max_groups: usize,
     /// Maximum nodes in the recursive filter expression.
     pub max_filter_nodes: usize,
+    /// Maximum recursive filter depth, counting the root as one.
+    pub max_filter_depth: usize,
     /// Maximum explicit sort fields.
     pub max_sort_fields: usize,
     /// Maximum group-key fields.
@@ -195,6 +197,7 @@ impl Default for ExecutionLimits {
             max_returned_records: 1_000,
             max_groups: 10_000,
             max_filter_nodes: 256,
+            max_filter_depth: 64,
             max_sort_fields: 16,
             max_group_fields: 8,
             max_metrics: 32,

@@ -7,8 +7,9 @@ Rust. Its base experience is one `hyphae` binary and one data directory.
 > `0.1.0-alpha.1`; none of the `0.1.0` compatibility guarantees apply until
 > every release gate is green.
 
-The durable core and deterministic query/retrieval implementation are locally
-validated. Their cross-platform CI evidence remains open.
+The durable core, deterministic query/retrieval, and offline result-proof
+implementation are locally validated. Their cross-platform CI evidence
+remains open.
 
 ## Product contract
 
