@@ -3,13 +3,14 @@
 The phases are ordered gates. A later phase may be prototyped early, but it
 cannot be declared complete while an earlier gate is red.
 
-Current status: Phases 0 and 1 are complete. Phase 2 through phase 6
+Current status: Phases 0 and 1 are complete. Phase 2 through phase 7
 implementations and local validation are complete; their cross-platform
 remote CI gates remain open. See [`gates/phase-2.md`](gates/phase-2.md),
 [`gates/phase-3.md`](gates/phase-3.md),
 [`gates/phase-4.md`](gates/phase-4.md),
 [`gates/phase-5.md`](gates/phase-5.md), and
-[`gates/phase-6.md`](gates/phase-6.md).
+[`gates/phase-6.md`](gates/phase-6.md), and
+[`gates/phase-7.md`](gates/phase-7.md).
 
 | Phase | Outcome | Exit evidence |
 |---|---|---|

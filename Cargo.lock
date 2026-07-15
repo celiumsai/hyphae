@@ -621,6 +621,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "hyphae-pliegors"
+version = "0.1.0-alpha.1"
+dependencies = [
+ "hyphae-client",
+ "thiserror",
+]
+
+[[package]]
 name = "hyphae-query"
 version = "0.1.0-alpha.1"
 dependencies = [

@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "conformance/rust",
+    "integrations/pliegors",
     "crates/hyphae-cli",
     "crates/hyphae-client",
     "crates/hyphae-contracts",

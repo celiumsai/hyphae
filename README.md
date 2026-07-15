@@ -8,8 +8,8 @@ Rust. Its base experience is one `hyphae` binary and one data directory.
 > every release gate is green.
 
 The durable core, deterministic query/retrieval, offline result proofs, secure
-optional `/v1` server, and five equivalent public clients are locally
-validated. Their cross-platform CI evidence remains open.
+optional `/v1` server, five equivalent public clients, and optional framework
+adapters are locally validated. Their cross-platform CI evidence remains open.
 
 ## Product contract
 
@@ -49,6 +49,7 @@ and rebuildable. The default path remains entirely local and deterministic.
 - `contracts/`: canonical OpenAPI 3.1 and JSON Schema 2020-12 contracts.
 - `sdks/`: TypeScript and Python SDKs generated from public contracts.
 - `mcp/`: MCP adapter documentation; implementation is the single binary.
+- `integrations/`: isolated optional PliegoRS, Astro, Next, and Vite adapters.
 - `examples/`: executable examples for embedded and HTTP use.
 - `docs/`: architecture, ADRs, operations, release gates, and source ledger.
 - `packaging/`: multiplatform packaging, SBOM, and signing definitions.

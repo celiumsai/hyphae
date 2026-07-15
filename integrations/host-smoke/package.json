@@ -1,0 +1,25 @@
+{
+  "name": "framework-host-smoke",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "build:astro": "astro build --root fixtures/astro",
+    "build:next": "next build fixtures/next --webpack",
+    "build:vite": "vite build fixtures/vite",
+    "test": "npm run build:astro && npm run build:next && npm run build:vite"
+  },
+  "dependencies": {
+    "astro": "7.0.9",
+    "next": "16.2.10",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "vite": "8.1.4"
+  },
+  "overrides": {
+    "postcss": "8.5.10"
+  }
+}

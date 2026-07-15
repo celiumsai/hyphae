@@ -17,3 +17,8 @@ for public APIs after `0.1.0`; on-disk format versions are tracked separately.
 - Embeddable engine facade and autonomous KV/query/snapshot/compaction CLI.
 - Canonical snapshot-witness result proofs with caller-pinned anchors and
   complete offline reexecution.
+- Secure OpenAPI-first `/v1` server with bounded requests and loopback default.
+- Equivalent Rust, TypeScript, Python, CLI, and MCP public clients with one
+  black-box conformance suite.
+- Optional PliegoRS, Astro, Next, and Vite adapters with public-only dependency
+  enforcement and host-without-Hyphae production-build tests.
