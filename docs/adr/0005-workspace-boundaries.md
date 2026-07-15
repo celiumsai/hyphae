@@ -22,6 +22,10 @@ The future engine coordinator and embeddable facade are added only when the
 durability primitives they expose are real. SDKs, MCP, providers, and
 framework adapters remain outside the Rust core dependency graph.
 
+Amendment 2026-07-15: `hyphae-engine` now implements that coordinator after
+the durable phase-2 gate. It depends on storage, query, and retrieval; those
+lower crates remain independent of the facade.
+
 ## Consequences
 
 - Internal formats can change without leaking into clients.

@@ -43,6 +43,8 @@ matrix is defined in [`compaction-v1.md`](../storage/compaction-v1.md).
 ## Layer rules
 
 - `hyphae-core` owns stable domain values and invariants, not I/O.
+- `hyphae-engine` is the embeddable facade that composes storage, structured
+  documents, query, and provider-neutral retrieval.
 - `hyphae-storage` owns disk format, recovery, snapshots, and indexes.
 - `hyphae-query` owns a deterministic typed AST and reference semantics.
 - `hyphae-retrieval` owns exact vector scoring and provider-neutral
@@ -51,9 +53,9 @@ matrix is defined in [`compaction-v1.md`](../storage/compaction-v1.md).
 - `hyphae-server` and `hyphae-client` communicate only through `/v1` models.
 - `hyphae-cli` is the only executable artifact and composes libraries.
 
-The future `hyphae-engine` and embeddable `hyphae` facade will coordinate
-storage, query, retrieval, and proofs after the durability primitives are
-proven. They are intentionally not fictional stubs in the initial workspace.
+`hyphae-engine` was introduced only after the phase-2 durability primitives
+were proven. Provenance joins the same facade in phase 4; delivery surfaces do
+not bypass its public semantics.
 
 ## Data directory
 

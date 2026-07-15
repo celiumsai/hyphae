@@ -306,7 +306,12 @@ impl<Clock: MonotonicClock> ExecutionBudget<'_, '_, Clock> {
     }
 }
 
-fn validate_query(query: &Query, limits: &ExecutionLimits) -> Result<(), QueryError> {
+/// Validates query shape and cursor canonicality without scanning records.
+///
+/// # Errors
+///
+/// Returns the same pre-execution validation errors as [`execute`].
+pub fn validate_query(query: &Query, limits: &ExecutionLimits) -> Result<(), QueryError> {
     if query.limit == 0 {
         return Err(QueryError::ZeroLimit);
     }

@@ -6,7 +6,9 @@ mod engine;
 mod model;
 mod value;
 
-pub use engine::{MonotonicClock, QueryError, SystemClock, execute, execute_with_clock};
+pub use engine::{
+    MonotonicClock, QueryError, SystemClock, execute, execute_with_clock, validate_query,
+};
 pub use model::{
     AggregationPlan, AggregationResult, CompareOperator, Cursor, ExecutionLimits, Filter,
     GroupResult, Metric, MetricValue, NamedMetric, NamedMetricValue, NullPlacement, Query,

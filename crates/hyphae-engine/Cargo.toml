@@ -1,5 +1,5 @@
 [package]
-name = "hyphae-cli"
+name = "hyphae-engine"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,17 +9,12 @@ repository.workspace = true
 homepage.workspace = true
 publish.workspace = true
 
-[[bin]]
-name = "hyphae"
-path = "src/main.rs"
-
 [dependencies]
-clap.workspace = true
-hyphae-core.workspace = true
-hyphae-engine.workspace = true
+blake3.workspace = true
+crc32c.workspace = true
 hyphae-query.workspace = true
+hyphae-retrieval.workspace = true
 hyphae-storage.workspace = true
-serde_json.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
 

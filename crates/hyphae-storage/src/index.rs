@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 use std::cell::Cell;
-use std::path::Path;
+use std::{ops::Bound, path::Path};
 
 use redb::{Database, Durability, ReadableDatabase, ReadableTable, TableDefinition};
 use thiserror::Error;
@@ -20,6 +20,7 @@ const IDEMPOTENCY: TableDefinition<&[u8], &[u8]> = TableDefinition::new("hyphae_
 const APPLIED_SEQUENCE: &str = "applied_sequence";
 const APPLIED_DIGEST: &str = "applied_digest";
 const RECEIPT_LENGTH: usize = 72;
+type RawKvEntry = (Vec<u8>, Vec<u8>);
 
 /// Failure while opening, verifying, or updating the rebuildable redb index.
 #[derive(Debug, Error)]
@@ -252,6 +253,25 @@ impl MaterializedIndex {
         let table = read.open_table(KV)?;
         let value = table.get(key)?.map(|value| value.value().to_vec());
         Ok(value)
+    }
+
+    pub(crate) fn scan_after(
+        &self,
+        after: Option<&[u8]>,
+        limit: usize,
+    ) -> Result<Vec<RawKvEntry>, MaterializedIndexError> {
+        let read = self.database.begin_read()?;
+        let table = read.open_table(KV)?;
+        let bounds = (
+            after.map_or(Bound::Unbounded, Bound::Excluded),
+            Bound::Unbounded,
+        );
+        let mut entries = Vec::with_capacity(limit);
+        for entry in table.range::<&[u8]>(bounds)?.take(limit) {
+            let (key, value) = entry?;
+            entries.push((key.value().to_vec(), value.value().to_vec()));
+        }
+        Ok(entries)
     }
 
     #[cfg(test)]

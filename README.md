@@ -7,6 +7,9 @@ Rust. Its base experience is one `hyphae` binary and one data directory.
 > `0.1.0-alpha.1`; none of the `0.1.0` compatibility guarantees apply until
 > every release gate is green.
 
+The durable core and deterministic query/retrieval implementation are locally
+validated. Their cross-platform CI evidence remains open.
+
 ## Product contract
 
 - No external database, cache, cloud, or AI provider is required.
@@ -54,14 +57,16 @@ and rebuildable. The default path remains entirely local and deterministic.
 The pinned toolchain is declared in `rust-toolchain.toml`.
 
 ```console
-cargo fmt --check
-cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo test --workspace --all-features
-cargo doc --workspace --no-deps
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+cargo test --workspace --all-features --locked
+cargo doc --workspace --all-features --no-deps --locked
 ```
 
-See `docs/roadmap.md` for execution order and `docs/gates/0.1.0.md` for the
-release definition of done.
+Start with [`docs/quickstart.md`](docs/quickstart.md). See
+[`docs/roadmap.md`](docs/roadmap.md) for execution order and
+[`docs/gates/0.1.0.md`](docs/gates/0.1.0.md) for the release definition of
+done.
 
 ## Historical source
 

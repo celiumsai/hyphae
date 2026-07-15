@@ -5,6 +5,9 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 use uuid::Uuid;
 
+/// Maximum KV entries returned by one ordered storage scan page.
+pub const MAX_SCAN_PAGE_ENTRIES: usize = 4_096;
+
 use crate::log::transaction_digest;
 use crate::{
     AppendOutcome, CommitReceipt, DataDirectory, DataDirectoryError, DurableLog, LogError,
@@ -71,6 +74,15 @@ pub enum StorageError {
         /// Unexpected nonempty segment path.
         path: PathBuf,
     },
+
+    /// A KV scan page size is zero or exceeds the hard storage bound.
+    #[error("scan page size {requested} is outside 1..={maximum}")]
+    InvalidScanLimit {
+        /// Requested page size.
+        requested: usize,
+        /// Hard maximum page size.
+        maximum: usize,
+    },
 }
 
 /// Recovery evidence returned when the complete embedded storage layer opens.
@@ -102,6 +114,24 @@ pub struct CompactionReport {
     pub retired_segment: PathBuf,
     /// Whether best-effort physical cleanup removed the retired segment.
     pub retired_segment_removed: bool,
+}
+
+/// One binary KV entry in canonical key order.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct KvEntry {
+    /// Binary key.
+    pub key: Vec<u8>,
+    /// Opaque binary value.
+    pub value: Vec<u8>,
+}
+
+/// One bounded ordered KV scan page.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct KvPage {
+    /// Entries strictly after the requested cursor.
+    pub entries: Vec<KvEntry>,
+    /// Last emitted key when more entries remain.
+    pub next_after: Option<Vec<u8>>,
 }
 
 /// Result of an online compaction request.
@@ -233,6 +263,43 @@ impl StorageEngine {
         }
         validate_key(key)?;
         Ok(self.index.get(key)?)
+    }
+
+    /// Scans one bounded page in strict binary-key order.
+    ///
+    /// `after` is exclusive. A returned `next_after` is present only when at
+    /// least one additional entry exists.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a stale handle, invalid cursor key, invalid page
+    /// size, or materialized-index failure.
+    pub fn scan_page(&self, after: Option<&[u8]>, limit: usize) -> Result<KvPage, StorageError> {
+        if self.index_stale {
+            return Err(StorageError::StaleIndex);
+        }
+        if let Some(key) = after {
+            validate_key(key)?;
+        }
+        if limit == 0 || limit > MAX_SCAN_PAGE_ENTRIES {
+            return Err(StorageError::InvalidScanLimit {
+                requested: limit,
+                maximum: MAX_SCAN_PAGE_ENTRIES,
+            });
+        }
+        let mut raw = self.index.scan_after(after, limit.saturating_add(1))?;
+        let has_more = raw.len() > limit;
+        raw.truncate(limit);
+        let next_after = has_more
+            .then(|| raw.last().map(|(key, _)| key.clone()))
+            .flatten();
+        Ok(KvPage {
+            entries: raw
+                .into_iter()
+                .map(|(key, value)| KvEntry { key, value })
+                .collect(),
+            next_after,
+        })
     }
 
     /// Returns the internal materialized-index path for diagnostics.
@@ -746,6 +813,36 @@ mod tests {
         let reopened = StorageEngine::open(&root)?;
         assert_eq!(reopened.recovery.replayed_transactions, 1);
         assert_eq!(reopened.storage.get(b"durable")?, Some(b"yes".to_vec()));
+        Ok(())
+    }
+
+    #[test]
+    fn kv_scan_pages_are_strictly_ordered_and_exclusive() -> Result<(), Box<dyn Error>> {
+        let temporary = TestDirectory::new("storage-scan-page")?;
+        let mut opened = StorageEngine::open(temporary.path().join("data"))?;
+        opened.storage.write(
+            Uuid::now_v7(),
+            &[
+                Mutation::put(b"c", b"three"),
+                Mutation::put(b"a", b"one"),
+                Mutation::put(b"b", b"two"),
+            ],
+        )?;
+
+        let first = opened.storage.scan_page(None, 2)?;
+        assert_eq!(
+            first
+                .entries
+                .iter()
+                .map(|entry| entry.key.as_slice())
+                .collect::<Vec<_>>(),
+            [b"a".as_slice(), b"b".as_slice()]
+        );
+        assert_eq!(first.next_after, Some(b"b".to_vec()));
+
+        let second = opened.storage.scan_page(first.next_after.as_deref(), 2)?;
+        assert_eq!(second.entries[0].key, b"c");
+        assert_eq!(second.next_after, None);
         Ok(())
     }
 }

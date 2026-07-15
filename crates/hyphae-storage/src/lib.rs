@@ -12,8 +12,8 @@ mod snapshot;
 
 pub use data_directory::{DataDirectory, DataDirectoryError};
 pub use engine::{
-    CompactionOutcome, CompactionReport, OpenedStorage, StorageEngine, StorageError,
-    StorageRecoveryReport,
+    CompactionOutcome, CompactionReport, KvEntry, KvPage, MAX_SCAN_PAGE_ENTRIES, OpenedStorage,
+    StorageEngine, StorageError, StorageRecoveryReport,
 };
 pub use index::MaterializedIndexError;
 pub use log::{
