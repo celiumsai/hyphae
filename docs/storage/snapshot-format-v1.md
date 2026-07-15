@@ -7,7 +7,7 @@ verified log checkpoint. It never copies redb implementation files. Entries
 are emitted in strict bytewise key order so identical logical state and
 checkpoint produce identical content.
 
-All integers are unsigned little-endian.
+All integers are unsigned little-endian. The header is exactly 112 bytes.
 
 ## Header
 
@@ -18,14 +18,15 @@ All integers are unsigned little-endian.
 | 10 | 2 | Reserved flags; must be zero |
 | 12 | 8 | Materialized commit-frame sequence, or zero for an empty log |
 | 20 | 32 | Commit-frame BLAKE3 digest, or all zero for an empty log |
-| 52 | 8 | Entry count |
-| 60 | 8 | Payload length |
-| 68 | 4 | CRC32C of header bytes `0..68` followed by the payload |
-| 72 | 32 | BLAKE3 of header bytes `0..72` followed by the payload |
+| 52 | 8 | KV entry count |
+| 60 | 8 | Durable idempotency receipt count |
+| 68 | 8 | Payload length |
+| 76 | 4 | CRC32C of header bytes `0..76` followed by the payload |
+| 80 | 32 | BLAKE3 of header bytes `0..80` followed by the payload |
 
 ## Entry encoding
 
-The payload contains exactly `entry count` records:
+The payload first contains exactly `KV entry count` records:
 
 | Size | Field |
 |---:|---|
@@ -38,6 +39,21 @@ Keys must be strictly increasing and therefore cannot repeat. Values are
 streamed during creation and verification; verification does not allocate a
 buffer proportional to value size.
 
+The KV section is followed by exactly `durable idempotency receipt count`
+fixed-size records:
+
+| Size | Field |
+|---:|---|
+| 16 | Transaction UUID |
+| 8 | Commit-frame sequence |
+| 32 | Commit-frame digest |
+| 32 | Canonical transaction digest |
+
+Receipts are strictly sorted by UUID bytes. Each commit sequence is nonzero
+and no later than the snapshot checkpoint. Persisting these receipts in the
+logical snapshot keeps exact retries and conflicting UUID detection stable
+after older log segments are retired.
+
 ## Creation and verification
 
 Hyphae streams the caught-up redb index into a unique temporary file, writes
@@ -47,9 +63,9 @@ snapshot directory is synchronized after the rename. A canonical snapshot
 already present for the same checkpoint is verified before reuse.
 
 Verification rejects future versions, flags, length overflows or mismatches,
-invalid or unordered keys, trailing or truncated bytes, CRC32C mismatch, and
-BLAKE3 mismatch. The checkpoint digest links the logical state to a verified
-commit in the authoritative log when the snapshot is restored.
+invalid or unordered keys or receipts, trailing or truncated bytes, CRC32C
+mismatch, and BLAKE3 mismatch. The checkpoint digest links the logical state
+to a verified commit in the authoritative log when the snapshot is restored.
 
 CRC32C and BLAKE3 detect accidental corruption. They are not signatures and
 do not authenticate a directory against an attacker able to rewrite the

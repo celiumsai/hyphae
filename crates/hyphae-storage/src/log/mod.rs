@@ -152,6 +152,10 @@ pub enum LogError {
     #[error("log sequence space is exhausted")]
     SequenceExhausted,
 
+    /// A segment base sequence and digest do not form a canonical anchor.
+    #[error("invalid log segment anchor")]
+    InvalidAnchor,
+
     /// The writer observed an uncertain I/O result and must be reopened.
     #[error("durable log writer is poisoned; reopen it before writing again")]
     Poisoned,
@@ -191,6 +195,10 @@ pub struct RecoveredTransaction {
 /// Evidence produced while opening and validating a segment.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct RecoveryReport {
+    /// Sequence immediately preceding this segment, or zero for the first segment.
+    pub base_sequence: u64,
+    /// Digest immediately preceding this segment, or all zero for the first segment.
+    pub base_digest: [u8; 32],
     /// Unique committed transactions in commit order.
     pub transactions: Vec<RecoveredTransaction>,
     /// Complete but uncommitted transaction attempts ignored during recovery.
@@ -235,6 +243,8 @@ pub struct DurableLog {
     previous_digest: [u8; 32],
     committed: HashMap<Uuid, CommitReceipt>,
     poisoned: bool,
+    #[cfg(test)]
+    fail_next_sync: bool,
 }
 
 impl DurableLog {
@@ -246,20 +256,40 @@ impl DurableLog {
     /// # Errors
     ///
     /// Returns an error for I/O failures or any complete invalid frame.
+    #[cfg(test)]
     pub(crate) fn open_file(
         path: impl AsRef<Path>,
     ) -> Result<(DurableLog, RecoveryReport), LogError> {
+        Self::open_file_at(path, 0, [0; 32])
+    }
+
+    pub(crate) fn open_file_at(
+        path: impl AsRef<Path>,
+        base_sequence: u64,
+        base_digest: [u8; 32],
+    ) -> Result<(DurableLog, RecoveryReport), LogError> {
+        if (base_sequence == 0) != (base_digest == [0; 32]) {
+            return Err(LogError::InvalidAnchor);
+        }
         let path = path.as_ref();
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
+        let existed = path.exists();
         let mut file = OpenOptions::new()
             .create(true)
             .read(true)
             .write(true)
             .truncate(false)
             .open(path)?;
-        let recovery = scan(&mut file)?;
+        if !existed {
+            file.sync_all()?;
+            #[cfg(unix)]
+            if let Some(parent) = path.parent() {
+                File::open(parent)?.sync_all()?;
+            }
+        }
+        let recovery = scan(&mut file, base_sequence, base_digest)?;
         let physical_length = file.metadata()?.len();
         if physical_length != recovery.valid_bytes {
             file.set_len(recovery.valid_bytes)?;
@@ -282,6 +312,8 @@ impl DurableLog {
             previous_digest: recovery.last_digest,
             committed,
             poisoned: false,
+            #[cfg(test)]
+            fail_next_sync: false,
         };
         Ok((log, recovery))
     }
@@ -340,6 +372,15 @@ impl DurableLog {
         append_result
     }
 
+    pub(crate) fn is_poisoned(&self) -> bool {
+        self.poisoned
+    }
+
+    #[cfg(test)]
+    pub(crate) fn inject_sync_failure(&mut self) {
+        self.fail_next_sync = true;
+    }
+
     fn append_new_transaction(
         &mut self,
         transaction_id: Uuid,
@@ -352,6 +393,10 @@ impl DurableLog {
             self.append_frame(FrameKind::Operation, transaction_id, operation)?;
         }
         let receipt = self.append_frame(FrameKind::Commit, transaction_id, descriptor)?;
+        #[cfg(test)]
+        if std::mem::take(&mut self.fail_next_sync) {
+            return Err(io::Error::other("injected log sync failure").into());
+        }
         self.file.sync_data()?;
 
         let receipt = CommitReceipt {
@@ -408,13 +453,25 @@ struct PendingTransaction {
     operations: Vec<Vec<u8>>,
 }
 
-fn scan(file: &mut File) -> Result<RecoveryReport, LogError> {
+fn scan(
+    file: &mut File,
+    base_sequence: u64,
+    base_digest: [u8; 32],
+) -> Result<RecoveryReport, LogError> {
     file.seek(SeekFrom::Start(0))?;
     let physical_length = file.metadata()?.len();
-    let mut report = RecoveryReport::default();
+    let mut report = RecoveryReport {
+        base_sequence,
+        base_digest,
+        last_sequence: base_sequence,
+        last_digest: base_digest,
+        ..RecoveryReport::default()
+    };
     let mut offset = 0_u64;
-    let mut expected_sequence = 1_u64;
-    let mut expected_previous_digest = [0_u8; 32];
+    let mut expected_sequence = base_sequence
+        .checked_add(1)
+        .ok_or(LogError::SequenceExhausted)?;
+    let mut expected_previous_digest = base_digest;
     let mut pending: Option<PendingTransaction> = None;
     let mut committed: HashMap<Uuid, CommitReceipt> = HashMap::new();
 
@@ -579,7 +636,10 @@ fn decode_descriptor(payload: &[u8], sequence: u64) -> Result<(u32, [u8; 32]), L
     Ok((operation_count, digest))
 }
 
-fn transaction_digest(operations: &[Vec<u8>], operation_count: u32) -> Result<[u8; 32], LogError> {
+pub(crate) fn transaction_digest(
+    operations: &[Vec<u8>],
+    operation_count: u32,
+) -> Result<[u8; 32], LogError> {
     let mut hasher = blake3::Hasher::new();
     hasher.update(TRANSACTION_DOMAIN);
     hasher.update(&u64::from(operation_count).to_le_bytes());
@@ -798,6 +858,48 @@ mod tests {
                 supported: 1,
                 ..
             })
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn anchored_segment_continues_the_global_digest_chain() -> Result<(), Box<dyn Error>> {
+        let temporary = TestDirectory::new("log-anchored-segment")?;
+        let first_path = temporary.path().join("first.hylog");
+        let second_path = temporary.path().join("second.hylog");
+        let mut first = open_for_test(&first_path)?;
+        first
+            .log
+            .append_transaction(Uuid::now_v7(), &[b"before-compaction".to_vec()])?;
+        drop(first);
+        let (_, first_recovery) = DurableLog::open_file(&first_path)?;
+
+        let (mut second, empty_recovery) = DurableLog::open_file_at(
+            &second_path,
+            first_recovery.last_sequence,
+            first_recovery.last_digest,
+        )?;
+        assert_eq!(empty_recovery.base_sequence, first_recovery.last_sequence);
+        assert_eq!(empty_recovery.last_digest, first_recovery.last_digest);
+        let outcome = second.append_transaction(Uuid::now_v7(), &[b"after-compaction".to_vec()])?;
+        let AppendOutcome::Committed(receipt) = outcome else {
+            return Err("new anchored transaction was not committed".into());
+        };
+        assert_eq!(receipt.commit_sequence, first_recovery.last_sequence + 3);
+        drop(second);
+
+        let (_, reopened) = DurableLog::open_file_at(
+            &second_path,
+            first_recovery.last_sequence,
+            first_recovery.last_digest,
+        )?;
+        assert_eq!(reopened.transactions.len(), 1);
+
+        let wrong_anchor =
+            DurableLog::open_file_at(&second_path, first_recovery.last_sequence, [9; 32]);
+        assert!(matches!(
+            wrong_anchor,
+            Err(LogError::PreviousDigestMismatch { .. })
         ));
         Ok(())
     }

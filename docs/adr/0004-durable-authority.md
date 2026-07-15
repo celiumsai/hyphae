@@ -29,6 +29,10 @@ frame establishes the complete transaction descriptor, and a matching commit
 frame makes its operation frames visible. A later begin supersedes an
 uncommitted attempt so retry after a crash remains deterministic.
 
+Active segments and retired-prefix snapshot anchors are selected by immutable
+generation records defined in
+[`docs/storage/manifest-format-v1.md`](../storage/manifest-format-v1.md).
+
 One writer owns a data directory. Recovery rejects future versions, truncates
 only incomplete tail bytes, rejects checksum or chain corruption, replays
 committed unapplied transactions idempotently, and ignores uncommitted work.

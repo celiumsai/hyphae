@@ -10,7 +10,7 @@ use fs4::{FileExt, TryLockError};
 use hyphae_core::DISK_FORMAT_VERSION;
 use thiserror::Error;
 
-use crate::{DurableLog, LogError, OpenedLog};
+use crate::{DurableLog, LogError, ManifestError, OpenedLog, manifest::StorageManifest};
 
 const FORMAT_PREFIX: &str = "hyphae-disk-format=";
 const REQUIRED_DIRECTORIES: [&str; 6] = ["manifest", "log", "snapshots", "indexes", "blobs", "tmp"];
@@ -35,6 +35,10 @@ pub enum DataDirectoryError {
         supported: u16,
     },
 
+    /// The immutable storage manifest could not be loaded or initialized.
+    #[error(transparent)]
+    Manifest(#[from] ManifestError),
+
     /// A filesystem operation failed.
     #[error("failed to {action} {path}: {source}")]
     Io {
@@ -57,6 +61,7 @@ pub enum DataDirectoryError {
 pub struct DataDirectory {
     root: PathBuf,
     lock: File,
+    manifest: StorageManifest,
 }
 
 impl DataDirectory {
@@ -111,7 +116,13 @@ impl DataDirectory {
             })?;
         }
 
-        Ok(Self { root, lock })
+        let manifest = StorageManifest::load_or_initialize(&root)?;
+
+        Ok(Self {
+            root,
+            lock,
+            manifest,
+        })
     }
 
     /// Returns the canonical root path.
@@ -119,9 +130,9 @@ impl DataDirectory {
         &self.root
     }
 
-    /// Returns the path of the first append-only log segment.
-    pub fn initial_log_path(&self) -> PathBuf {
-        self.root.join("log").join("0000000000000001.hylog")
+    /// Returns the path of the active append-only log segment.
+    pub fn active_log_path(&self) -> PathBuf {
+        self.log_path(self.manifest.active_segment)
     }
 
     /// Opens the initial durable log while borrowing this directory lock.
@@ -132,8 +143,71 @@ impl DataDirectory {
     ///
     /// Returns an error for I/O failures or any complete invalid frame.
     pub fn open_log(&self) -> Result<OpenedLog<'_>, LogError> {
-        let (log, recovery) = DurableLog::open_file(self.initial_log_path())?;
+        let (log, recovery) = DurableLog::open_file_at(
+            self.active_log_path(),
+            self.manifest.base_sequence,
+            self.manifest.base_digest,
+        )?;
         Ok(OpenedLog::new(log, recovery))
+    }
+
+    pub(crate) fn log_anchor(&self) -> (u64, [u8; 32]) {
+        (self.manifest.base_sequence, self.manifest.base_digest)
+    }
+
+    pub(crate) fn manifest(&self) -> StorageManifest {
+        self.manifest
+    }
+
+    pub(crate) fn log_path(&self, segment: u64) -> PathBuf {
+        self.root.join("log").join(format!("{segment:020}.hylog"))
+    }
+
+    pub(crate) fn snapshot_path(&self, sequence: u64) -> PathBuf {
+        self.root
+            .join("snapshots")
+            .join(format!("snapshot-{sequence:020}.hysnap"))
+    }
+
+    pub(crate) fn commit_manifest(
+        &mut self,
+        manifest: StorageManifest,
+    ) -> Result<(), DataDirectoryError> {
+        manifest.write_new(&self.root)?;
+        self.manifest = manifest;
+        Ok(())
+    }
+
+    pub(crate) fn cleanup_retired_logs(&self) -> bool {
+        let log_directory = self.root.join("log");
+        let Ok(entries) = fs::read_dir(&log_directory) else {
+            return false;
+        };
+        #[cfg(unix)]
+        let mut removed = false;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Some(segment) = segment_from_path(&path) else {
+                continue;
+            };
+            if segment < self.manifest.active_segment {
+                match fs::remove_file(&path) {
+                    Ok(()) => {
+                        #[cfg(unix)]
+                        {
+                            removed = true;
+                        }
+                    }
+                    Err(source) if source.kind() == io::ErrorKind::NotFound => {}
+                    Err(_) => return false,
+                }
+            }
+        }
+        #[cfg(unix)]
+        if removed && sync_directory(&log_directory).is_err() {
+            return false;
+        }
+        true
     }
 }
 
@@ -221,6 +295,16 @@ fn validate_format(path: &Path) -> Result<(), DataDirectoryError> {
     Ok(())
 }
 
+fn segment_from_path(path: &Path) -> Option<u64> {
+    let filename = path.file_name()?.to_str()?;
+    let raw_segment = filename.strip_suffix(".hylog")?;
+    if raw_segment.len() != 20 || !raw_segment.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    let segment = raw_segment.parse().ok()?;
+    (format!("{segment:020}.hylog") == filename).then_some(segment)
+}
+
 #[cfg(test)]
 mod tests {
     use std::{error::Error, fs};
@@ -228,7 +312,7 @@ mod tests {
     use uuid::Uuid;
 
     use super::{DataDirectory, DataDirectoryError, REQUIRED_DIRECTORIES};
-    use crate::test_support::TestDirectory;
+    use crate::{DurableLog, test_support::TestDirectory};
 
     #[test]
     fn initializes_canonical_layout() -> Result<(), Box<dyn Error>> {
@@ -290,6 +374,29 @@ mod tests {
             DataDirectory::open(temporary.path()),
             Err(DataDirectoryError::AlreadyLocked(_))
         ));
+        Ok(())
+    }
+
+    #[test]
+    fn migrates_an_existing_format_one_directory_without_a_manifest() -> Result<(), Box<dyn Error>>
+    {
+        let temporary = TestDirectory::new("data-manifest-migration")?;
+        let root = temporary.path().join("data");
+        fs::create_dir_all(root.join("log"))?;
+        fs::write(root.join("FORMAT"), "hyphae-disk-format=1\n")?;
+        let log_path = root.join("log/00000000000000000001.hylog");
+        let (mut legacy_log, _) = DurableLog::open_file(&log_path)?;
+        legacy_log.append_transaction(Uuid::now_v7(), &[b"preserved".to_vec()])?;
+        drop(legacy_log);
+
+        let directory = DataDirectory::open(&root)?;
+        assert!(
+            root.join("manifest/00000000000000000001.hymanifest")
+                .is_file()
+        );
+        let opened = directory.open_log()?;
+        assert_eq!(opened.recovery.transactions.len(), 1);
+        assert_eq!(opened.recovery.transactions[0].operations[0], b"preserved");
         Ok(())
     }
 }

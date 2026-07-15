@@ -9,15 +9,20 @@ use std::{
 use hyphae_core::DISK_FORMAT_VERSION;
 use thiserror::Error;
 
-use crate::{MAX_KEY_BYTES, MaterializedIndexError, index::MaterializedIndex};
+use crate::{
+    CommitReceipt, MAX_KEY_BYTES, MaterializedIndexError, index::MaterializedIndex,
+    log::MAX_OPERATION_BYTES,
+};
 
 const MAGIC: [u8; 8] = *b"HYSNAP01";
-const HEADER_LENGTH: usize = 104;
-const HEADER_LENGTH_U64: u64 = 104;
-const CHECKSUM_PREFIX_LENGTH: usize = 68;
-const DIGEST_PREFIX_LENGTH: usize = 72;
+const HEADER_LENGTH: usize = 112;
+const HEADER_LENGTH_U64: u64 = 112;
+const CHECKSUM_PREFIX_LENGTH: usize = 76;
+const DIGEST_PREFIX_LENGTH: usize = 80;
 const ENTRY_HEADER_LENGTH: usize = 12;
 const ENTRY_HEADER_LENGTH_U64: u64 = 12;
+const RECEIPT_LENGTH: usize = 88;
+const RECEIPT_LENGTH_U64: u64 = 88;
 const COPY_BUFFER_LENGTH: usize = 64 * 1024;
 const COPY_BUFFER_LENGTH_U64: u64 = 64 * 1024;
 
@@ -32,6 +37,8 @@ pub struct SnapshotInfo {
     pub checkpoint_digest: Option<[u8; 32]>,
     /// Number of sorted KV entries.
     pub entry_count: u64,
+    /// Number of sorted durable idempotency receipts.
+    pub receipt_count: u64,
     /// BLAKE3 digest of the canonical snapshot content.
     pub snapshot_digest: [u8; 32],
     /// Complete file length.
@@ -97,7 +104,7 @@ pub(crate) fn create_snapshot(
         });
     }
 
-    let (entry_count, payload_length) = measure_payload(index)?;
+    let measurements = measure_payload(index, checkpoint.sequence)?;
     let final_path =
         snapshots_directory.join(format!("snapshot-{:020}.hysnap", checkpoint.sequence));
     if final_path.exists() {
@@ -116,8 +123,9 @@ pub(crate) fn create_snapshot(
     header[10..12].copy_from_slice(&0_u16.to_le_bytes());
     header[12..20].copy_from_slice(&checkpoint.sequence.to_le_bytes());
     header[20..52].copy_from_slice(&checkpoint.digest.unwrap_or([0; 32]));
-    header[52..60].copy_from_slice(&entry_count.to_le_bytes());
-    header[60..68].copy_from_slice(&payload_length.to_le_bytes());
+    header[52..60].copy_from_slice(&measurements.entry_count.to_le_bytes());
+    header[60..68].copy_from_slice(&measurements.receipt_count.to_le_bytes());
+    header[68..76].copy_from_slice(&measurements.payload_length.to_le_bytes());
 
     let mut checksum = crc32c::crc32c(&header[..CHECKSUM_PREFIX_LENGTH]);
     let mut checksum_error = None;
@@ -137,7 +145,10 @@ pub(crate) fn create_snapshot(
     if let Some(source) = checksum_error {
         return Err(source);
     }
-    header[68..72].copy_from_slice(&checksum.to_le_bytes());
+    index.for_each_receipt(|receipt| {
+        checksum = crc32c::crc32c_append(checksum, &encode_receipt(receipt));
+    })?;
+    header[76..80].copy_from_slice(&checksum.to_le_bytes());
 
     let temporary_path = temporary_directory.join(format!(
         "snapshot-{:020}-{}.tmp",
@@ -163,8 +174,19 @@ pub(crate) fn create_snapshot(
     if let Some(source) = write_error {
         return Err(source);
     }
+    let mut receipt_write_error = None;
+    index.for_each_receipt(|receipt| {
+        if receipt_write_error.is_none()
+            && let Err(source) = write_receipt(&mut file, &mut hasher, receipt)
+        {
+            receipt_write_error = Some(source);
+        }
+    })?;
+    if let Some(source) = receipt_write_error {
+        return Err(source);
+    }
     let snapshot_digest = *hasher.finalize().as_bytes();
-    file.seek(SeekFrom::Start(72))?;
+    file.seek(SeekFrom::Start(80))?;
     file.write_all(&snapshot_digest)?;
     file.sync_all()?;
     drop(file);
@@ -199,9 +221,79 @@ pub fn verify_snapshot(path: impl AsRef<Path>) -> Result<SnapshotInfo, SnapshotE
         checkpoint_sequence: decoded.checkpoint_sequence,
         checkpoint_digest: decoded.checkpoint_digest,
         entry_count: decoded.entry_count,
+        receipt_count: decoded.receipt_count,
         snapshot_digest: decoded.expected_digest,
         file_bytes,
     })
+}
+
+pub(crate) trait SnapshotRecordVisitor {
+    fn put(&mut self, key: &[u8], value: &[u8]) -> Result<(), SnapshotError>;
+    fn receipt(&mut self, receipt: &CommitReceipt) -> Result<(), SnapshotError>;
+}
+
+pub(crate) fn read_snapshot_records(
+    path: &Path,
+    visitor: &mut impl SnapshotRecordVisitor,
+) -> Result<SnapshotInfo, SnapshotError> {
+    let before = verify_snapshot(path)?;
+    let mut file = File::open(path)?;
+    let file_bytes = file.metadata()?.len();
+    let mut header = [0_u8; HEADER_LENGTH];
+    read_exact_or_invalid(&mut file, &mut header, "truncated header")?;
+    let decoded = decode_header(&header, file_bytes)?;
+    let mut consumed = 0_u64;
+
+    for _ in 0..decoded.entry_count {
+        let mut entry_header = [0_u8; ENTRY_HEADER_LENGTH];
+        read_payload_exact(
+            &mut file,
+            &mut entry_header,
+            &mut consumed,
+            decoded.payload_length,
+        )?;
+        let key_length = usize::try_from(u32::from_le_bytes(copy_array(&entry_header[..4])))
+            .map_err(|_| SnapshotError::Invalid {
+                reason: "key length overflow during restore",
+            })?;
+        let value_length = usize::try_from(u64::from_le_bytes(copy_array(&entry_header[4..12])))
+            .map_err(|_| SnapshotError::Invalid {
+                reason: "value length overflow during restore",
+            })?;
+        if key_length == 0 || key_length > MAX_KEY_BYTES || value_length > MAX_OPERATION_BYTES {
+            return Err(SnapshotError::Invalid {
+                reason: "record exceeds restore bounds",
+            });
+        }
+        let mut key = vec![0_u8; key_length];
+        let mut value = vec![0_u8; value_length];
+        read_payload_exact(&mut file, &mut key, &mut consumed, decoded.payload_length)?;
+        read_payload_exact(&mut file, &mut value, &mut consumed, decoded.payload_length)?;
+        visitor.put(&key, &value)?;
+    }
+    for _ in 0..decoded.receipt_count {
+        let mut encoded = [0_u8; RECEIPT_LENGTH];
+        read_payload_exact(
+            &mut file,
+            &mut encoded,
+            &mut consumed,
+            decoded.payload_length,
+        )?;
+        visitor.receipt(&decode_snapshot_receipt(&encoded))?;
+    }
+    if consumed != decoded.payload_length {
+        return Err(SnapshotError::Invalid {
+            reason: "record counts do not consume payload during restore",
+        });
+    }
+
+    let after = verify_snapshot(path)?;
+    if before != after {
+        return Err(SnapshotError::Invalid {
+            reason: "snapshot changed during restore",
+        });
+    }
+    Ok(after)
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -209,6 +301,7 @@ struct DecodedHeader {
     checkpoint_sequence: u64,
     checkpoint_digest: Option<[u8; 32]>,
     entry_count: u64,
+    receipt_count: u64,
     payload_length: u64,
     expected_checksum: u32,
     expected_digest: [u8; 32],
@@ -249,7 +342,13 @@ fn decode_header(
         Some(raw_checkpoint_digest)
     };
     let entry_count = u64::from_le_bytes(copy_array(&header[52..60]));
-    let payload_length = u64::from_le_bytes(copy_array(&header[60..68]));
+    let receipt_count = u64::from_le_bytes(copy_array(&header[60..68]));
+    if checkpoint_sequence == 0 && receipt_count != 0 {
+        return Err(SnapshotError::Invalid {
+            reason: "empty checkpoint has idempotency receipts",
+        });
+    }
+    let payload_length = u64::from_le_bytes(copy_array(&header[68..76]));
     let expected_file_bytes =
         HEADER_LENGTH_U64
             .checked_add(payload_length)
@@ -266,9 +365,10 @@ fn decode_header(
         checkpoint_sequence,
         checkpoint_digest,
         entry_count,
+        receipt_count,
         payload_length,
-        expected_checksum: u32::from_le_bytes(copy_array(&header[68..72])),
-        expected_digest: copy_array(&header[72..104]),
+        expected_checksum: u32::from_le_bytes(copy_array(&header[76..80])),
+        expected_digest: copy_array(&header[80..112]),
     })
 }
 
@@ -335,9 +435,33 @@ fn verify_payload(
             })?;
         }
     }
+    let mut previous_transaction_id = None;
+    for _ in 0..decoded.receipt_count {
+        let mut encoded = [0_u8; RECEIPT_LENGTH];
+        read_payload_exact(file, &mut encoded, &mut consumed, decoded.payload_length)?;
+        checksum = crc32c::crc32c_append(checksum, &encoded);
+        hasher.update(&encoded);
+
+        let transaction_id: [u8; 16] = copy_array(&encoded[..16]);
+        if previous_transaction_id
+            .as_ref()
+            .is_some_and(|previous| previous >= &transaction_id)
+        {
+            return Err(SnapshotError::Invalid {
+                reason: "transaction identifiers are not strictly sorted",
+            });
+        }
+        previous_transaction_id = Some(transaction_id);
+        let commit_sequence = u64::from_le_bytes(copy_array(&encoded[16..24]));
+        if commit_sequence == 0 || commit_sequence > decoded.checkpoint_sequence {
+            return Err(SnapshotError::Invalid {
+                reason: "idempotency receipt exceeds snapshot checkpoint",
+            });
+        }
+    }
     if consumed != decoded.payload_length {
         return Err(SnapshotError::Invalid {
-            reason: "entry count does not consume payload",
+            reason: "record counts do not consume payload",
         });
     }
     if checksum != decoded.expected_checksum {
@@ -354,7 +478,17 @@ fn verify_payload(
     Ok(())
 }
 
-fn measure_payload(index: &MaterializedIndex) -> Result<(u64, u64), SnapshotError> {
+#[derive(Clone, Copy, Debug)]
+struct Measurements {
+    entry_count: u64,
+    receipt_count: u64,
+    payload_length: u64,
+}
+
+fn measure_payload(
+    index: &MaterializedIndex,
+    checkpoint_sequence: u64,
+) -> Result<Measurements, SnapshotError> {
     let mut entry_count = Some(0_u64);
     let mut payload_length = Some(0_u64);
     let mut valid = true;
@@ -379,9 +513,18 @@ fn measure_payload(index: &MaterializedIndex) -> Result<(u64, u64), SnapshotErro
                 .and_then(|length| length.checked_add(value_length))
         });
     })?;
+    let mut receipt_count = Some(0_u64);
+    index.for_each_receipt(|receipt| {
+        if receipt.commit_sequence == 0 || receipt.commit_sequence > checkpoint_sequence {
+            valid = false;
+            return;
+        }
+        receipt_count = receipt_count.and_then(|count| count.checked_add(1));
+        payload_length = payload_length.and_then(|length| length.checked_add(RECEIPT_LENGTH_U64));
+    })?;
     if !valid {
         return Err(SnapshotError::Invalid {
-            reason: "index contains an invalid key",
+            reason: "index contains an invalid key or idempotency receipt",
         });
     }
     let Some(entry_count) = entry_count else {
@@ -394,7 +537,16 @@ fn measure_payload(index: &MaterializedIndex) -> Result<(u64, u64), SnapshotErro
             reason: "payload length overflow",
         });
     };
-    Ok((entry_count, payload_length))
+    let Some(receipt_count) = receipt_count else {
+        return Err(SnapshotError::Invalid {
+            reason: "receipt count overflow",
+        });
+    };
+    Ok(Measurements {
+        entry_count,
+        receipt_count,
+        payload_length,
+    })
 }
 
 fn encode_entry_header(
@@ -424,6 +576,35 @@ fn write_entry(
         writer.write_all(bytes)?;
         hasher.update(bytes);
     }
+    Ok(())
+}
+
+fn encode_receipt(receipt: &CommitReceipt) -> [u8; RECEIPT_LENGTH] {
+    let mut encoded = [0_u8; RECEIPT_LENGTH];
+    encoded[..16].copy_from_slice(receipt.transaction_id.as_bytes());
+    encoded[16..24].copy_from_slice(&receipt.commit_sequence.to_le_bytes());
+    encoded[24..56].copy_from_slice(&receipt.commit_digest);
+    encoded[56..88].copy_from_slice(&receipt.transaction_digest);
+    encoded
+}
+
+fn decode_snapshot_receipt(encoded: &[u8; RECEIPT_LENGTH]) -> CommitReceipt {
+    CommitReceipt {
+        transaction_id: uuid::Uuid::from_bytes(copy_array(&encoded[..16])),
+        commit_sequence: u64::from_le_bytes(copy_array(&encoded[16..24])),
+        commit_digest: copy_array(&encoded[24..56]),
+        transaction_digest: copy_array(&encoded[56..88]),
+    }
+}
+
+fn write_receipt(
+    writer: &mut impl Write,
+    hasher: &mut blake3::Hasher,
+    receipt: &CommitReceipt,
+) -> Result<(), SnapshotError> {
+    let encoded = encode_receipt(receipt);
+    writer.write_all(&encoded)?;
+    hasher.update(&encoded);
     Ok(())
 }
 

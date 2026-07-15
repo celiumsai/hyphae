@@ -5,11 +5,15 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::log::transaction_digest;
 use crate::{
     AppendOutcome, CommitReceipt, DataDirectory, DataDirectoryError, DurableLog, LogError,
     MaterializedIndexError, Mutation, MutationError, RecoveredTransaction, RecoveryReport,
-    SnapshotError, SnapshotInfo, index::MaterializedIndex, mutation::validate_key,
-    snapshot::create_snapshot,
+    SnapshotError, SnapshotInfo,
+    index::MaterializedIndex,
+    manifest::StorageManifest,
+    mutation::validate_key,
+    snapshot::{create_snapshot, verify_snapshot},
 };
 
 /// Failure while opening or operating the durable embedded storage engine.
@@ -56,6 +60,17 @@ pub enum StorageError {
         #[source]
         source: Box<SnapshotError>,
     },
+
+    /// The immutable manifest generation space is exhausted.
+    #[error("storage manifest generation space is exhausted")]
+    ManifestGenerationExhausted,
+
+    /// A prepared compaction segment unexpectedly contains complete frames.
+    #[error("prepared compaction segment is not empty: {path}")]
+    PreparedSegmentNotEmpty {
+        /// Unexpected nonempty segment path.
+        path: PathBuf,
+    },
 }
 
 /// Recovery evidence returned when the complete embedded storage layer opens.
@@ -76,6 +91,31 @@ pub struct OpenedStorage {
     pub recovery: StorageRecoveryReport,
 }
 
+/// Evidence for one successfully committed compaction generation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CompactionReport {
+    /// Newly active immutable manifest generation.
+    pub generation: u64,
+    /// Snapshot anchoring the retired log prefix.
+    pub snapshot: SnapshotInfo,
+    /// Segment that became inactive after the manifest commit.
+    pub retired_segment: PathBuf,
+    /// Whether best-effort physical cleanup removed the retired segment.
+    pub retired_segment_removed: bool,
+}
+
+/// Result of an online compaction request.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CompactionOutcome {
+    /// No committed frames exist beyond the already active snapshot anchor.
+    NoChanges {
+        /// Current verified snapshot.
+        snapshot: SnapshotInfo,
+    },
+    /// A new manifest and anchored segment were committed.
+    Compacted(CompactionReport),
+}
+
 /// Single-writer durable KV storage composed from the log and rebuildable redb index.
 #[derive(Debug)]
 pub struct StorageEngine {
@@ -94,10 +134,14 @@ impl StorageEngine {
     /// mutations, a divergent index checkpoint, or filesystem failures.
     pub fn open(path: impl AsRef<Path>) -> Result<OpenedStorage, StorageError> {
         let directory = DataDirectory::open(path)?;
-        let (log, log_recovery) = DurableLog::open_file(directory.initial_log_path())?;
         let index_path = directory.path().join("indexes").join("primary.redb");
+        ensure_snapshot_base(&directory, &index_path)?;
+        let (base_sequence, base_digest) = directory.log_anchor();
+        let (log, log_recovery) =
+            DurableLog::open_file_at(directory.active_log_path(), base_sequence, base_digest)?;
         let index = MaterializedIndex::open(index_path)?;
         let replayed_transactions = index.replay(&log_recovery)?;
+        let _cleanup_complete = directory.cleanup_retired_logs();
         let storage = Self {
             log,
             index,
@@ -140,7 +184,25 @@ impl StorageEngine {
             .iter()
             .map(Mutation::encode)
             .collect::<Result<Vec<_>, _>>()?;
-        let outcome = self.log.append_transaction(transaction_id, &operations)?;
+        let operation_count =
+            u32::try_from(operations.len()).map_err(|_| LogError::TooManyOperations)?;
+        let requested_digest = transaction_digest(&operations, operation_count)?;
+        if let Some(receipt) = self.index.receipt(transaction_id)? {
+            return if receipt.transaction_digest == requested_digest {
+                Ok(AppendOutcome::Existing(receipt))
+            } else {
+                Err(LogError::IdempotencyConflict { transaction_id }.into())
+            };
+        }
+        let outcome = match self.log.append_transaction(transaction_id, &operations) {
+            Ok(outcome) => outcome,
+            Err(source) => {
+                if self.log.is_poisoned() {
+                    self.index_stale = true;
+                }
+                return Err(source.into());
+            }
+        };
         let AppendOutcome::Committed(receipt) = outcome else {
             return Ok(outcome);
         };
@@ -192,6 +254,129 @@ impl StorageEngine {
         let temporary = self.directory.path().join("tmp");
         Ok(create_snapshot(&self.index, &snapshots, &temporary)?)
     }
+
+    /// Retires the active log prefix behind a verified logical snapshot.
+    ///
+    /// The new empty segment is synchronized before an immutable manifest
+    /// generation selects it. Physical deletion of the retired segment happens
+    /// only after that commit and is reported independently.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error while preparing the snapshot, segment, or manifest. A
+    /// poisoned or stale handle must be reopened before compaction.
+    pub fn compact(&mut self) -> Result<CompactionOutcome, StorageError> {
+        if self.index_stale {
+            return Err(StorageError::StaleIndex);
+        }
+        let snapshot = self.snapshot()?;
+        let current = self.directory.manifest();
+        if snapshot.checkpoint_sequence == 0
+            || snapshot.checkpoint_sequence == current.base_sequence
+        {
+            return Ok(CompactionOutcome::NoChanges { snapshot });
+        }
+        let generation = current
+            .generation
+            .checked_add(1)
+            .ok_or(StorageError::ManifestGenerationExhausted)?;
+        let Some(base_digest) = snapshot.checkpoint_digest else {
+            return Err(SnapshotError::Invalid {
+                reason: "compaction snapshot lacks a checkpoint digest",
+            }
+            .into());
+        };
+        let next = StorageManifest {
+            generation,
+            active_segment: generation,
+            base_sequence: snapshot.checkpoint_sequence,
+            base_digest,
+            snapshot_digest: snapshot.snapshot_digest,
+        };
+        let next_segment = self.directory.log_path(generation);
+        let (next_log, prepared) =
+            DurableLog::open_file_at(&next_segment, next.base_sequence, next.base_digest)?;
+        if prepared.valid_bytes != 0 {
+            return Err(StorageError::PreparedSegmentNotEmpty { path: next_segment });
+        }
+
+        let retired_segment = self.directory.active_log_path();
+        self.directory.commit_manifest(next)?;
+        let retired_log = std::mem::replace(&mut self.log, next_log);
+        drop(retired_log);
+        let retired_segment_removed = remove_retired_segment(&retired_segment);
+        Ok(CompactionOutcome::Compacted(CompactionReport {
+            generation,
+            snapshot,
+            retired_segment,
+            retired_segment_removed,
+        }))
+    }
+}
+
+fn remove_retired_segment(path: &Path) -> bool {
+    match std::fs::remove_file(path) {
+        Ok(()) => {
+            #[cfg(unix)]
+            if let Some(parent) = path.parent()
+                && sync_directory(parent).is_err()
+            {
+                return false;
+            }
+            true
+        }
+        Err(source) if source.kind() == std::io::ErrorKind::NotFound => true,
+        Err(_) => false,
+    }
+}
+
+fn ensure_snapshot_base(directory: &DataDirectory, index_path: &Path) -> Result<(), StorageError> {
+    let manifest = directory.manifest();
+    if manifest.base_sequence == 0 {
+        return Ok(());
+    }
+    let snapshot_path = directory.snapshot_path(manifest.base_sequence);
+    let verified = verify_snapshot(&snapshot_path)?;
+    if verified.checkpoint_sequence != manifest.base_sequence
+        || verified.checkpoint_digest != Some(manifest.base_digest)
+        || verified.snapshot_digest != manifest.snapshot_digest
+    {
+        return Err(SnapshotError::Invalid {
+            reason: "snapshot does not match active storage manifest",
+        }
+        .into());
+    }
+    if index_path.exists() {
+        return Ok(());
+    }
+
+    let temporary_path = directory
+        .path()
+        .join("tmp")
+        .join(format!("index-restore-{}.redb.tmp", Uuid::now_v7()));
+    let restored = MaterializedIndex::restore_from_snapshot(&temporary_path, &snapshot_path)?;
+    if restored != verified {
+        return Err(SnapshotError::Invalid {
+            reason: "snapshot changed while rebuilding the materialized index",
+        }
+        .into());
+    }
+    std::fs::rename(&temporary_path, index_path)
+        .map_err(SnapshotError::from)
+        .map_err(StorageError::from)?;
+    #[cfg(unix)]
+    sync_directory(index_path.parent().ok_or(SnapshotError::Invalid {
+        reason: "materialized index path has no parent",
+    })?)?;
+    Ok(())
+}
+
+#[cfg(unix)]
+fn sync_directory(path: &Path) -> Result<(), StorageError> {
+    std::fs::File::open(path)
+        .and_then(|directory| directory.sync_all())
+        .map_err(SnapshotError::from)
+        .map_err(StorageError::from)
 }
 
 impl From<MaterializedIndexError> for StorageError {
@@ -220,10 +405,10 @@ mod tests {
 
     use uuid::Uuid;
 
-    use super::StorageEngine;
+    use super::{CompactionOutcome, DurableLog, StorageEngine, StorageError, StorageManifest};
     use crate::{
-        AppendOutcome, DataDirectory, Mutation, SnapshotError, test_support::TestDirectory,
-        verify_snapshot,
+        AppendOutcome, DataDirectory, Mutation, SnapshotError, index::MaterializedIndex,
+        test_support::TestDirectory, verify_snapshot,
     };
 
     #[test]
@@ -260,6 +445,16 @@ mod tests {
         assert!(matches!(first, AppendOutcome::Committed(_)));
         assert!(matches!(second, AppendOutcome::Existing(_)));
         assert_eq!(opened.storage.get(b"key")?, Some(b"value".to_vec()));
+
+        let conflict = opened
+            .storage
+            .write(transaction_id, &[Mutation::put(b"key", b"different")]);
+        assert!(matches!(
+            conflict,
+            Err(super::StorageError::Log(
+                crate::LogError::IdempotencyConflict { .. }
+            ))
+        ));
         Ok(())
     }
 
@@ -297,6 +492,7 @@ mod tests {
         assert_eq!(created.checkpoint_sequence, 4);
         assert!(created.checkpoint_digest.is_some());
         assert_eq!(created.entry_count, 2);
+        assert_eq!(created.receipt_count, 1);
         assert_eq!(verify_snapshot(&created.path)?, created);
         assert_eq!(opened.storage.snapshot()?, created);
 
@@ -329,8 +525,227 @@ mod tests {
         assert_eq!(snapshot.checkpoint_sequence, 0);
         assert_eq!(snapshot.checkpoint_digest, None);
         assert_eq!(snapshot.entry_count, 0);
-        assert_eq!(snapshot.file_bytes, 104);
+        assert_eq!(snapshot.receipt_count, 0);
+        assert_eq!(snapshot.file_bytes, 112);
         assert_eq!(verify_snapshot(&snapshot.path)?, snapshot);
+        Ok(())
+    }
+
+    #[test]
+    fn snapshot_rebuilds_kv_and_idempotency_state() -> Result<(), Box<dyn Error>> {
+        let temporary = TestDirectory::new("storage-snapshot-restore")?;
+        let root = temporary.path().join("data");
+        let transaction_id = Uuid::now_v7();
+        let mut opened = StorageEngine::open(&root)?;
+        let outcome = opened.storage.write(
+            transaction_id,
+            &[
+                Mutation::put(b"alpha", b"one"),
+                Mutation::put(b"beta", b"two"),
+            ],
+        )?;
+        let AppendOutcome::Committed(receipt) = outcome else {
+            return Err("new transaction was not committed".into());
+        };
+        let snapshot = opened.storage.snapshot()?;
+        drop(opened);
+
+        let restored_path = root.join("tmp/restored.redb");
+        assert_eq!(
+            MaterializedIndex::restore_from_snapshot(&restored_path, &snapshot.path)?,
+            snapshot
+        );
+        let restored = MaterializedIndex::open(&restored_path)?;
+        assert_eq!(restored.get(b"alpha")?, Some(b"one".to_vec()));
+        assert_eq!(restored.get(b"beta")?, Some(b"two".to_vec()));
+        assert_eq!(restored.receipt(transaction_id)?, Some(receipt));
+        Ok(())
+    }
+
+    #[test]
+    fn compaction_retires_history_and_snapshot_rebuilds_the_index() -> Result<(), Box<dyn Error>> {
+        let temporary = TestDirectory::new("storage-compaction")?;
+        let root = temporary.path().join("data");
+        let first_id = Uuid::now_v7();
+        let mut opened = StorageEngine::open(&root)?;
+        let first = opened
+            .storage
+            .write(first_id, &[Mutation::put(b"before", b"one")])?;
+        let AppendOutcome::Committed(first_receipt) = first else {
+            return Err("first transaction was not committed".into());
+        };
+
+        let compacted = opened.storage.compact()?;
+        let CompactionOutcome::Compacted(report) = compacted else {
+            return Err("committed history was not compacted".into());
+        };
+        assert_eq!(report.generation, 2);
+        assert!(report.retired_segment_removed);
+        assert!(!report.retired_segment.exists());
+        assert!(root.join("log/00000000000000000002.hylog").is_file());
+        assert!(matches!(
+            opened.storage.compact()?,
+            CompactionOutcome::NoChanges { .. }
+        ));
+
+        assert_eq!(
+            opened
+                .storage
+                .write(first_id, &[Mutation::put(b"before", b"one")])?,
+            AppendOutcome::Existing(first_receipt)
+        );
+        let second_id = Uuid::now_v7();
+        let second = opened
+            .storage
+            .write(second_id, &[Mutation::put(b"after", b"two")])?;
+        let AppendOutcome::Committed(second_receipt) = second else {
+            return Err("second transaction was not committed".into());
+        };
+        assert_eq!(
+            second_receipt.commit_sequence,
+            first_receipt.commit_sequence + 3
+        );
+        drop(opened);
+
+        fs::remove_file(root.join("indexes/primary.redb"))?;
+        let mut rebuilt = StorageEngine::open(&root)?;
+        assert_eq!(rebuilt.recovery.replayed_transactions, 1);
+        assert_eq!(rebuilt.storage.get(b"before")?, Some(b"one".to_vec()));
+        assert_eq!(rebuilt.storage.get(b"after")?, Some(b"two".to_vec()));
+        assert_eq!(
+            rebuilt
+                .storage
+                .write(first_id, &[Mutation::put(b"before", b"one")])?,
+            AppendOutcome::Existing(first_receipt)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn orphan_prepared_segment_is_ignored_until_manifest_commit() -> Result<(), Box<dyn Error>> {
+        let temporary = TestDirectory::new("storage-compaction-orphan")?;
+        let root = temporary.path().join("data");
+        let mut opened = StorageEngine::open(&root)?;
+        opened
+            .storage
+            .write(Uuid::now_v7(), &[Mutation::put(b"key", b"value")])?;
+        let snapshot = opened.storage.snapshot()?;
+        let base_digest = snapshot
+            .checkpoint_digest
+            .ok_or("snapshot checkpoint digest is absent")?;
+        let orphan_path = opened.storage.directory.log_path(2);
+        let (orphan, recovery) =
+            DurableLog::open_file_at(&orphan_path, snapshot.checkpoint_sequence, base_digest)?;
+        assert_eq!(recovery.valid_bytes, 0);
+        drop(orphan);
+        drop(opened);
+
+        let mut reopened = StorageEngine::open(&root)?;
+        assert_eq!(reopened.storage.directory.manifest().generation, 1);
+        assert_eq!(reopened.storage.get(b"key")?, Some(b"value".to_vec()));
+        assert!(matches!(
+            reopened.storage.compact()?,
+            CompactionOutcome::Compacted(_)
+        ));
+        assert_eq!(reopened.storage.directory.manifest().generation, 2);
+        Ok(())
+    }
+
+    #[test]
+    fn committed_manifest_wins_before_retired_log_cleanup() -> Result<(), Box<dyn Error>> {
+        let temporary = TestDirectory::new("storage-compaction-committed")?;
+        let root = temporary.path().join("data");
+        let mut opened = StorageEngine::open(&root)?;
+        opened
+            .storage
+            .write(Uuid::now_v7(), &[Mutation::put(b"key", b"value")])?;
+        let snapshot = opened.storage.snapshot()?;
+        let base_digest = snapshot
+            .checkpoint_digest
+            .ok_or("snapshot checkpoint digest is absent")?;
+        let next = StorageManifest {
+            generation: 2,
+            active_segment: 2,
+            base_sequence: snapshot.checkpoint_sequence,
+            base_digest,
+            snapshot_digest: snapshot.snapshot_digest,
+        };
+        let (prepared, recovery) = DurableLog::open_file_at(
+            opened.storage.directory.log_path(2),
+            next.base_sequence,
+            next.base_digest,
+        )?;
+        assert_eq!(recovery.valid_bytes, 0);
+        drop(prepared);
+        opened.storage.directory.commit_manifest(next)?;
+        let retired_path = opened.storage.directory.log_path(1);
+        assert!(retired_path.is_file());
+        drop(opened);
+
+        let reopened = StorageEngine::open(&root)?;
+        assert_eq!(reopened.storage.directory.manifest().generation, 2);
+        assert_eq!(reopened.storage.get(b"key")?, Some(b"value".to_vec()));
+        assert!(!retired_path.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn uncertain_log_sync_blocks_the_handle_until_recovery() -> Result<(), Box<dyn Error>> {
+        let temporary = TestDirectory::new("storage-injected-log-sync")?;
+        let root = temporary.path().join("data");
+        let mut opened = StorageEngine::open(&root)?;
+        opened.storage.log.inject_sync_failure();
+
+        let result = opened
+            .storage
+            .write(Uuid::now_v7(), &[Mutation::put(b"recovered", b"yes")]);
+        assert!(matches!(
+            result,
+            Err(StorageError::Log(crate::LogError::Io(_)))
+        ));
+        assert!(matches!(
+            opened.storage.get(b"recovered"),
+            Err(StorageError::StaleIndex)
+        ));
+        assert!(matches!(
+            opened.storage.snapshot(),
+            Err(StorageError::StaleIndex)
+        ));
+        assert!(matches!(
+            opened.storage.compact(),
+            Err(StorageError::StaleIndex)
+        ));
+        drop(opened);
+
+        let reopened = StorageEngine::open(&root)?;
+        assert_eq!(reopened.recovery.replayed_transactions, 1);
+        assert_eq!(reopened.storage.get(b"recovered")?, Some(b"yes".to_vec()));
+        Ok(())
+    }
+
+    #[test]
+    fn post_commit_index_failure_recovers_from_the_log() -> Result<(), Box<dyn Error>> {
+        let temporary = TestDirectory::new("storage-injected-index")?;
+        let root = temporary.path().join("data");
+        let mut opened = StorageEngine::open(&root)?;
+        opened.storage.index.inject_apply_failure();
+
+        let result = opened
+            .storage
+            .write(Uuid::now_v7(), &[Mutation::put(b"durable", b"yes")]);
+        assert!(matches!(
+            result,
+            Err(StorageError::CommittedButNotIndexed { .. })
+        ));
+        assert!(matches!(
+            opened.storage.get(b"durable"),
+            Err(StorageError::StaleIndex)
+        ));
+        drop(opened);
+
+        let reopened = StorageEngine::open(&root)?;
+        assert_eq!(reopened.recovery.replayed_transactions, 1);
+        assert_eq!(reopened.storage.get(b"durable")?, Some(b"yes".to_vec()));
         Ok(())
     }
 }

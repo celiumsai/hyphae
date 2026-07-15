@@ -3,9 +3,11 @@
 Status: normative for disk format `1` while Hyphae remains pre-`0.1.0`.
 
 All integers are unsigned little-endian. A segment is a sequence of frames;
-there is no mutable segment header. The first frame has sequence `1` and an
-all-zero previous digest. Every later sequence increases by exactly one and
-links to the prior frame digest.
+there is no mutable segment header. The initial segment starts with sequence
+`1` and an all-zero previous digest. A later segment is anchored by its active
+immutable manifest: its first frame uses anchor sequence plus one and the
+anchor digest as its previous digest. Every later sequence increases by
+exactly one and links to the prior frame digest.
 
 ## Frame layout
 
@@ -60,3 +62,7 @@ Opening streams and validates every complete frame before exposing replay:
 
 The materialized index is not part of this format and must be reconstructible
 from verified committed transactions.
+
+Retiring a prefix follows
+[`compaction-v1.md`](compaction-v1.md); the snapshot preserves logical state
+and idempotency while the anchored segment preserves the global digest chain.
