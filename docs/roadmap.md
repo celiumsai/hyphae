@@ -3,7 +3,7 @@
 The phases are ordered gates. A later phase may be prototyped early, but it
 cannot be declared complete while an earlier gate is red.
 
-Current status: Phase 0 is complete and Phase 1 is active.
+Current status: Phases 0 and 1 are complete; Phase 2 is active.
 
 | Phase | Outcome | Exit evidence |
 |---|---|---|
