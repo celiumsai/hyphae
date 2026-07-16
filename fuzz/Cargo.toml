@@ -1,0 +1,38 @@
+[package]
+name = "hyphae-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+license = "Apache-2.0"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+hyphae-engine = { path = "../crates/hyphae-engine", version = "=0.1.0-alpha.1" }
+hyphae-storage = { path = "../crates/hyphae-storage", version = "=0.1.0-alpha.1" }
+libfuzzer-sys = "0.4.13"
+
+[[bin]]
+name = "document_decode"
+path = "fuzz_targets/document_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "proof_decode"
+path = "fuzz_targets/proof_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "snapshot_verify"
+path = "fuzz_targets/snapshot_verify.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]
+members = ["."]

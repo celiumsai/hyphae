@@ -16,6 +16,8 @@ allow = [
     "ISC",
     "MIT",
     "MPL-2.0",
+    # LLVM libFuzzer bundled by the development-only libfuzzer-sys crate.
+    "NCSA",
     "Unicode-3.0",
     "Zlib",
 ]

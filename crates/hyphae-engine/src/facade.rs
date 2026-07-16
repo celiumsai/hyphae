@@ -9,8 +9,9 @@ use hyphae_retrieval::{
     RetrievalError, RetrievalLimits, RetrievalOutcome, RetrievalRequest, VectorRecord, retrieve,
 };
 use hyphae_storage::{
-    AppendOutcome, CompactionOutcome, MAX_SCAN_PAGE_ENTRIES, Mutation, SnapshotInfo, StorageEngine,
-    StorageError, StorageRecoveryReport,
+    AppendOutcome, BackupError, BackupInfo, CompactionOutcome, MAX_SCAN_PAGE_ENTRIES, Mutation,
+    RestoreInfo, SnapshotInfo, StorageEngine, StorageError, StorageRecoveryReport, restore_backup,
+    verify_backup,
 };
 use thiserror::Error;
 use uuid::Uuid;
@@ -25,6 +26,10 @@ pub enum EngineError {
     /// Durable embedded storage failed.
     #[error(transparent)]
     Storage(#[from] StorageError),
+
+    /// Portable backup creation, verification, or restore failed.
+    #[error(transparent)]
+    Backup(#[from] BackupError),
 
     /// Canonical document encoding or verification failed.
     #[error(transparent)]
@@ -305,6 +310,38 @@ impl HyphaeEngine {
     /// Returns a stale-handle, snapshot, segment, or manifest error.
     pub fn compact(&mut self) -> Result<CompactionOutcome, EngineError> {
         Ok(self.storage.compact()?)
+    }
+
+    /// Creates an atomic portable backup at the locked logical checkpoint.
+    ///
+    /// # Errors
+    ///
+    /// Returns a snapshot, destination, synchronization, or promotion error.
+    pub fn backup(&self, destination: impl AsRef<Path>) -> Result<BackupInfo, EngineError> {
+        Ok(self.storage.backup(destination)?)
+    }
+
+    /// Verifies a portable backup without opening a live data directory.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a malformed layout, metadata mismatch, or corrupt
+    /// snapshot.
+    pub fn verify_backup(path: impl AsRef<Path>) -> Result<BackupInfo, EngineError> {
+        Ok(verify_backup(path)?)
+    }
+
+    /// Restores a backup to a new atomically activated data directory.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error before destination activation if verification, index
+    /// reconstruction, reopen, or filesystem synchronization fails.
+    pub fn restore_backup(
+        backup: impl AsRef<Path>,
+        destination: impl AsRef<Path>,
+    ) -> Result<RestoreInfo, EngineError> {
+        Ok(restore_backup(backup, destination)?)
     }
 }
 

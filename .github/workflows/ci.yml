@@ -145,3 +145,41 @@ jobs:
         run: cargo build -p hyphae-cli --locked
       - name: Run live adapter conformance
         run: python tools/run_integration_conformance.py
+
+  release-readiness:
+    name: Release readiness
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable branch
+        with:
+          toolchain: 1.96.0
+      - name: Restore Rust cache
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - name: Install pinned Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: 3.11.15
+      - name: Build the standalone binary
+        run: cargo build -p hyphae-cli --locked
+      - name: Verify historical disk fixtures are reproducible
+        run: python tools/generate_compatibility_fixture.py --binary target/debug/hyphae --check compatibility/v1/data-directory.json
+      - name: Test deterministic packaging and checksums
+        run: |
+          python -m compileall -q packaging tools
+          python packaging/test_package.py
+      - name: Install from a generated Linux archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/install
+          python packaging/package.py \
+            --binary target/debug/hyphae \
+            --target x86_64-unknown-linux-gnu \
+            --output-dir artifacts
+          tar -xzf artifacts/*.tar.gz -C artifacts/install
+          installed="$(find artifacts/install -type f -name hyphae -print -quit)"
+          test -n "$installed"
+          "$installed" version --json

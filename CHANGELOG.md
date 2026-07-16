@@ -22,3 +22,10 @@ for public APIs after `0.1.0`; on-disk format versions are tracked separately.
   black-box conformance suite.
 - Optional PliegoRS, Astro, Next, and Vite adapters with public-only dependency
   enforcement and host-without-Hyphae production-build tests.
+- Portable logical backups, atomic verified restores, and complete local
+  `doctor` diagnostics in the single binary.
+- Immutable on-disk compatibility fixtures and deterministic multiplatform
+  release archives.
+- SPDX/CycloneDX SBOMs, SHA-256 manifests, SLSA v1 build provenance, keyless
+  Sigstore signature/attestation bundles, bounded fuzzing, and
+  load/kill-restart soak gates.

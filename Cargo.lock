@@ -616,6 +616,7 @@ dependencies = [
  "hyphae-query",
  "hyphae-retrieval",
  "hyphae-storage",
+ "serde_json",
  "thiserror",
  "uuid",
 ]
@@ -677,6 +678,8 @@ dependencies = [
  "fs4",
  "hyphae-core",
  "redb",
+ "serde",
+ "serde_json",
  "thiserror",
  "uuid",
 ]

@@ -170,3 +170,58 @@ fn one_binary_persists_queries_and_compacts_without_external_services() -> Resul
     assert_eq!(after["scanned_records"], before["scanned_records"]);
     Ok(())
 }
+
+#[test]
+fn one_binary_backup_restore_and_doctor_are_offline() -> Result<(), Box<dyn Error>> {
+    let temporary = TestDirectory::create()?;
+    let source = temporary.path.join("source");
+    let backup = temporary.path.join("backup");
+    let restored = temporary.path.join("restored");
+    let transaction_id = "019f0000-0000-7000-8000-000000000010";
+    let backup_string = backup.to_string_lossy().into_owned();
+
+    let committed = run(
+        &source,
+        &[
+            "put",
+            "--key",
+            "alpha",
+            "--json",
+            r#"{"durable":true}"#,
+            "--transaction-id",
+            transaction_id,
+        ],
+    )?;
+    assert_eq!(committed["status"], "committed");
+    assert_eq!(
+        run(&source, &["backup", "--out", &backup_string])?["status"],
+        "created"
+    );
+    assert_eq!(
+        run_without_data(&["backup-verify", "--backup", &backup_string])?["status"],
+        "verified"
+    );
+    assert_eq!(
+        run(&restored, &["restore", "--backup", &backup_string])?["status"],
+        "restored"
+    );
+
+    let read = run(&restored, &["get", "--key", "alpha"])?;
+    assert_eq!(read["found"], true);
+    let retry = run(
+        &restored,
+        &[
+            "put",
+            "--key",
+            "alpha",
+            "--json",
+            r#"{"durable":true}"#,
+            "--transaction-id",
+            transaction_id,
+        ],
+    )?;
+    assert_eq!(retry["status"], "existing");
+    assert_eq!(retry["commit_digest"], committed["commit_digest"]);
+    assert_eq!(run(&restored, &["doctor"])?["status"], "healthy");
+    Ok(())
+}

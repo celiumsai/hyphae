@@ -124,7 +124,9 @@ impl ApiError {
             EngineError::Proof(ProofError::ProofLimitExceeded { .. }) => {
                 Self::result_too_large(request_id)
             }
-            EngineError::Proof(_) | EngineError::Retrieval(_) => Self::internal(request_id),
+            EngineError::Backup(_) | EngineError::Proof(_) | EngineError::Retrieval(_) => {
+                Self::internal(request_id)
+            }
         }
     }
 

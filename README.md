@@ -8,8 +8,9 @@ Rust. Its base experience is one `hyphae` binary and one data directory.
 > every release gate is green.
 
 The durable core, deterministic query/retrieval, offline result proofs, secure
-optional `/v1` server, five equivalent public clients, and optional framework
-adapters are locally validated. Their cross-platform CI evidence remains open.
+optional `/v1` server, five equivalent public clients, optional framework
+adapters, portable recovery, and release-candidate automation are locally
+validated. Their final native CI and signed-release evidence remains open.
 
 ## Product contract
 
@@ -53,6 +54,7 @@ and rebuildable. The default path remains entirely local and deterministic.
 - `examples/`: executable examples for embedded and HTTP use.
 - `docs/`: architecture, ADRs, operations, release gates, and source ledger.
 - `packaging/`: multiplatform packaging, SBOM, and signing definitions.
+- `compatibility/`: immutable historical on-disk fixtures.
 
 ## Development
 
@@ -67,6 +69,8 @@ cargo doc --workspace --all-features --no-deps --locked
 
 Start with [`docs/quickstart.md`](docs/quickstart.md). See
 [`docs/api/v1.md`](docs/api/v1.md) for the optional server,
+[`docs/operations/install-upgrade.md`](docs/operations/install-upgrade.md) for
+installation and recovery operations,
 [`docs/roadmap.md`](docs/roadmap.md) for execution order and
 [`docs/gates/0.1.0.md`](docs/gates/0.1.0.md) for the release definition of
 done.

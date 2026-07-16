@@ -1,0 +1,59 @@
+name: Fuzz
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "crates/hyphae-engine/**"
+      - "crates/hyphae-storage/**"
+      - "fuzz/**"
+      - ".github/workflows/fuzz.yml"
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    name: Bounded parser fuzzing
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Install pinned nightly toolchain
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable branch
+        with:
+          toolchain: nightly-2026-07-01
+      - name: Install pinned cargo-fuzz
+        run: cargo +nightly-2026-07-01 install cargo-fuzz --version 0.13.2 --locked
+      - name: Install pinned fuzz dependency auditors
+        run: |
+          cargo +nightly-2026-07-01 install cargo-audit --version 0.22.2 --locked
+          cargo +nightly-2026-07-01 install cargo-deny --version 0.20.2 --locked
+      - name: Fetch the locked fuzz dependency graph
+        run: cargo +nightly-2026-07-01 fetch --manifest-path fuzz/Cargo.toml --locked
+      - name: Audit the isolated fuzz dependency graph
+        run: |
+          cargo +nightly-2026-07-01 deny --manifest-path fuzz/Cargo.toml check
+          cargo +nightly-2026-07-01 audit --file fuzz/Cargo.lock --deny warnings
+      - name: Fuzz canonical document decoder
+        run: cargo +nightly-2026-07-01 fuzz run document_decode -- -max_total_time=15 -max_len=1048576
+      - name: Fuzz result-proof decoder
+        run: cargo +nightly-2026-07-01 fuzz run proof_decode -- -max_total_time=15 -max_len=1048576
+      - name: Fuzz snapshot verifier
+        run: cargo +nightly-2026-07-01 fuzz run snapshot_verify -- -max_total_time=15 -max_len=1048576
+      - name: Preserve only crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-crashes-${{ github.run_id }}
+          path: fuzz/artifacts/
+          if-no-files-found: ignore
+          retention-days: 14

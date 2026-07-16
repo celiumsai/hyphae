@@ -3,14 +3,16 @@
 The phases are ordered gates. A later phase may be prototyped early, but it
 cannot be declared complete while an earlier gate is red.
 
-Current status: Phases 0 and 1 are complete. Phase 2 through phase 7
-implementations and local validation are complete; their cross-platform
-remote CI gates remain open. See [`gates/phase-2.md`](gates/phase-2.md),
+Current status: Phases 0 and 1 are complete. Phase 2 through phase 8
+implementations and local validation are complete; their cross-platform,
+security, and signed-release CI gates remain open. See
+[`gates/phase-2.md`](gates/phase-2.md),
 [`gates/phase-3.md`](gates/phase-3.md),
 [`gates/phase-4.md`](gates/phase-4.md),
 [`gates/phase-5.md`](gates/phase-5.md), and
 [`gates/phase-6.md`](gates/phase-6.md), and
-[`gates/phase-7.md`](gates/phase-7.md).
+[`gates/phase-7.md`](gates/phase-7.md), and
+[`gates/phase-8.md`](gates/phase-8.md).
 
 | Phase | Outcome | Exit evidence |
 |---|---|---|
@@ -23,6 +25,27 @@ remote CI gates remain open. See [`gates/phase-2.md`](gates/phase-2.md),
 | 6 | Equivalent clients | Rust, TypeScript, Python, CLI, and MCP pass one conformance suite |
 | 7 | Optional adapters | PliegoRS, Astro, Next, and Vite adapters use only public contracts |
 | 8 | Release candidate | Multiplatform packages, SBOM, signatures, backup/restore, fuzz/load gates |
+
+## Post-0.1 candidates
+
+These items are explicitly excluded from the `0.1.0` gate. They require new
+ADRs, versioned public contracts, deterministic reference semantics, proof
+coverage, and independent quality evidence before implementation:
+
+- provider-free lexical retrieval, with optional semantic retrieval fused by
+  explainable reciprocal-rank fusion;
+- neutral temporal validity, explicit abstention, and configurable diversity
+  policies such as maximal marginal relevance;
+- an optional typed relationship graph whose edges preserve verifiable
+  provenance and never become a storage prerequisite;
+- optional MCP/client lifecycle hooks, a loopback-only daemon, pre-persistence
+  secret redaction, and an idempotent durable spool with acknowledgements.
+
+This backlog incorporates concepts identified during an independent review of
+[MenteDB](https://github.com/nambok/mentedb) on 2026-07-16. No MenteDB code was
+copied or ported. Any later source reuse remains subject to the provenance,
+license, transformation, inherited-test, and human-review requirements in the
+[porting ledger](porting/ledger.md).
 
 The first end-to-end durable proof is deliberately narrow: use one binary to
 write data, interrupt it during a write, restart, query the committed state,

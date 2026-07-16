@@ -10,9 +10,9 @@ pub const MAX_SCAN_PAGE_ENTRIES: usize = 4_096;
 
 use crate::log::transaction_digest;
 use crate::{
-    AppendOutcome, CommitReceipt, DataDirectory, DataDirectoryError, DurableLog, LogError,
-    MaterializedIndexError, Mutation, MutationError, RecoveredTransaction, RecoveryReport,
-    SnapshotError, SnapshotInfo,
+    AppendOutcome, BackupError, BackupInfo, CommitReceipt, DataDirectory, DataDirectoryError,
+    DurableLog, LogError, MaterializedIndexError, Mutation, MutationError, RecoveredTransaction,
+    RecoveryReport, SnapshotError, SnapshotInfo,
     index::MaterializedIndex,
     manifest::StorageManifest,
     mutation::validate_key,
@@ -190,6 +190,17 @@ impl StorageEngine {
     /// Returns the owned data-directory path.
     pub fn data_path(&self) -> &Path {
         self.directory.path()
+    }
+
+    /// Creates an atomic, independently verifiable backup at the current checkpoint.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the snapshot cannot be created, the destination
+    /// exists or is inside the live data directory, or synchronized promotion
+    /// of the complete backup fails.
+    pub fn backup(&self, destination: impl AsRef<Path>) -> Result<BackupInfo, BackupError> {
+        crate::backup::create_backup(self, destination.as_ref())
     }
 
     /// Durably commits an atomic batch and then materializes it.

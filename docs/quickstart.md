@@ -63,6 +63,24 @@ black-box test in `crates/hyphae-cli/tests/single_binary.rs` executes this
 complete flow, including durable idempotency and a fresh process for every
 command.
 
+## Back up, restore, and diagnose offline
+
+Every destination must be new and outside the live data directory:
+
+```bash
+./target/release/hyphae backup \
+  --data-dir "$HYPHAE_DATA_DIR" --out ./hyphae-backup
+./target/release/hyphae backup-verify --backup ./hyphae-backup
+./target/release/hyphae restore \
+  --backup ./hyphae-backup --data-dir ./hyphae-restored
+./target/release/hyphae doctor --data-dir ./hyphae-restored
+```
+
+Restore verifies the complete portable snapshot, rebuilds its embedded index,
+and reopens the engine before the final directory becomes visible. See
+[`operations/backup-restore.md`](operations/backup-restore.md) and
+[`operations/doctor.md`](operations/doctor.md) for operating procedures.
+
 ## Prove and verify a result offline
 
 Create a portable proof while querying:
@@ -126,8 +144,9 @@ see [`clients/v1.md`](clients/v1.md).
 ## Current boundary
 
 The current implementation exposes durable KV documents, deterministic
-structured query, snapshot, compaction, offline result proofs, and the
-optional secure OpenAPI-first `/v1` server and equivalent public clients.
+structured query, snapshot, compaction, backup/restore/doctor, offline result
+proofs, and the optional secure OpenAPI-first `/v1` server and equivalent
+public clients.
 Semantic retrieval already has
 provider-neutral exact reference semantics, but no embedding provider is
 enabled or required.

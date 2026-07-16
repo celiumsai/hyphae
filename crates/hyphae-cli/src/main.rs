@@ -150,6 +150,36 @@ enum Command {
         #[arg(long, env = "HYPHAE_DATA_DIR")]
         data_dir: PathBuf,
     },
+    /// Create a portable backup at one locked logical checkpoint.
+    Backup {
+        /// Owned Hyphae data directory.
+        #[arg(long, env = "HYPHAE_DATA_DIR")]
+        data_dir: PathBuf,
+        /// New backup directory; existing paths are never replaced.
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Verify a portable backup without restoring it.
+    BackupVerify {
+        /// Backup directory containing `BACKUP.json` and `snapshot.hysnap`.
+        #[arg(long)]
+        backup: PathBuf,
+    },
+    /// Restore a verified backup to a new atomically activated data directory.
+    Restore {
+        /// Backup directory to verify and restore.
+        #[arg(long)]
+        backup: PathBuf,
+        /// New destination data directory; existing paths are never replaced.
+        #[arg(long, env = "HYPHAE_DATA_DIR")]
+        data_dir: PathBuf,
+    },
+    /// Verify and report the complete local data-directory health state.
+    Doctor {
+        /// Owned Hyphae data directory.
+        #[arg(long, env = "HYPHAE_DATA_DIR")]
+        data_dir: PathBuf,
+    },
     /// Verify a result proof completely offline.
     Verify {
         /// Canonical `.hyproof` file.
@@ -280,6 +310,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
         ),
         Command::Snapshot { data_dir } => snapshot(&data_dir),
         Command::Compact { data_dir } => compact(&data_dir),
+        Command::Backup { data_dir, out } => backup(&data_dir, &out),
+        Command::BackupVerify { backup } => backup_verify(&backup),
+        Command::Restore { backup, data_dir } => restore(&backup, &data_dir),
+        Command::Doctor { data_dir } => doctor(&data_dir),
         Command::Verify {
             proof,
             snapshot,
@@ -614,6 +648,57 @@ fn compact(data_dir: &Path) -> Result<(), Box<dyn Error>> {
         }),
     };
     print_json(&value)
+}
+
+fn backup(data_dir: &Path, destination: &Path) -> Result<(), Box<dyn Error>> {
+    let opened = HyphaeEngine::open(data_dir)?;
+    let backup = opened.engine.backup(destination)?;
+    print_json(&json!({
+        "status": "created",
+        "backup_path": backup.path,
+        "snapshot": snapshot_json(&backup.snapshot),
+    }))
+}
+
+fn backup_verify(path: &Path) -> Result<(), Box<dyn Error>> {
+    let backup = HyphaeEngine::verify_backup(path)?;
+    print_json(&json!({
+        "status": "verified",
+        "backup_path": backup.path,
+        "snapshot": snapshot_json(&backup.snapshot),
+    }))
+}
+
+fn restore(backup: &Path, data_dir: &Path) -> Result<(), Box<dyn Error>> {
+    let restored = HyphaeEngine::restore_backup(backup, data_dir)?;
+    print_json(&json!({
+        "status": "restored",
+        "data_path": restored.data_path,
+        "snapshot": snapshot_json(&restored.snapshot),
+    }))
+}
+
+fn doctor(data_dir: &Path) -> Result<(), Box<dyn Error>> {
+    let opened = HyphaeEngine::open(data_dir)?;
+    let snapshot = opened.engine.snapshot()?;
+    let log = &opened.recovery.log;
+    print_json(&json!({
+        "status": "healthy",
+        "data_path": data_dir,
+        "recovery": {
+            "base_sequence": log.base_sequence,
+            "base_digest": encode_hex(&log.base_digest),
+            "recovered_transactions": log.transactions.len(),
+            "ignored_uncommitted_transactions": log.ignored_uncommitted_transactions,
+            "duplicate_commits": log.duplicate_commits,
+            "truncated_tail_bytes": log.truncated_tail_bytes,
+            "valid_bytes": log.valid_bytes,
+            "last_sequence": log.last_sequence,
+            "last_digest": encode_hex(&log.last_digest),
+            "replayed_transactions": opened.recovery.replayed_transactions,
+        },
+        "snapshot": snapshot_json(&snapshot),
+    }))
 }
 
 fn parse_field_path(path: &str) -> Result<FieldPath, CliError> {

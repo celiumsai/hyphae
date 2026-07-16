@@ -2,6 +2,7 @@
 
 //! Durable log, recovery, snapshot, and materialized-index implementation.
 
+mod backup;
 mod data_directory;
 mod engine;
 mod index;
@@ -10,6 +11,7 @@ mod manifest;
 mod mutation;
 mod snapshot;
 
+pub use backup::{BackupError, BackupInfo, RestoreInfo, restore_backup, verify_backup};
 pub use data_directory::{DataDirectory, DataDirectoryError};
 pub use engine::{
     CompactionOutcome, CompactionReport, KvEntry, KvPage, MAX_SCAN_PAGE_ENTRIES, OpenedStorage,
