@@ -1,6 +1,6 @@
 # Compaction protocol v1
 
-Status: normative for disk format `1` while Hyphae remains pre-`0.1.0`.
+Status: normative for Hyphae `0.1.0` disk format `1`.
 
 Compaction retires a verified log prefix without breaking its global sequence
 or digest chain. It depends on three durable records:

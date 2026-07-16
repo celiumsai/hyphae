@@ -1,6 +1,6 @@
 # Structured query reference semantics v1
 
-Status: normative for the internal pre-`0.1.0` reference executor.
+Status: normative for the Hyphae `0.1.0` reference executor.
 
 ## Logical records and values
 

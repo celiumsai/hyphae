@@ -58,4 +58,4 @@ cargo build --release --locked -p hyphae-cli
 ```
 
 Release archives, not local source builds, are the supported installation
-artifact after `0.1.0`.
+artifact for `0.1.0` and later.

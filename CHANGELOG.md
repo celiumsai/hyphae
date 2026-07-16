@@ -5,6 +5,8 @@ for public APIs after `0.1.0`; on-disk format versions are tracked separately.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-07-16
+
 ### Added
 
 - Autonomous product boundary and release gates.

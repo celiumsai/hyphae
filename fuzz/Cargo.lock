@@ -151,11 +151,11 @@ dependencies = [
 
 [[package]]
 name = "hyphae-core"
-version = "0.1.0-alpha.1"
+version = "0.1.0"
 
 [[package]]
 name = "hyphae-engine"
-version = "0.1.0-alpha.1"
+version = "0.1.0"
 dependencies = [
  "blake3",
  "crc32c",
@@ -177,7 +177,7 @@ dependencies = [
 
 [[package]]
 name = "hyphae-query"
-version = "0.1.0-alpha.1"
+version = "0.1.0"
 dependencies = [
  "hyphae-core",
  "thiserror",
@@ -185,7 +185,7 @@ dependencies = [
 
 [[package]]
 name = "hyphae-retrieval"
-version = "0.1.0-alpha.1"
+version = "0.1.0"
 dependencies = [
  "hyphae-core",
  "thiserror",
@@ -193,7 +193,7 @@ dependencies = [
 
 [[package]]
 name = "hyphae-storage"
-version = "0.1.0-alpha.1"
+version = "0.1.0"
 dependencies = [
  "blake3",
  "crc32c",

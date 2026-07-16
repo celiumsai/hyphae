@@ -1,7 +1,6 @@
 # KV mutation format v1
 
-Status: normative for KV operation payloads in disk format `1` while Hyphae
-remains pre-`0.1.0`.
+Status: normative for Hyphae `0.1.0` KV operation payloads in disk format `1`.
 
 Keys and values are arbitrary bytes. Keys must contain between 1 byte and
 1 MiB. The complete encoded mutation must fit the log's 16 MiB frame limit.

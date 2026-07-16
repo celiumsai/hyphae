@@ -28,7 +28,7 @@ class PackageTests(unittest.TestCase):
                 first = build_archive(binary, target, first_dir, 1_700_000_000)
                 second = build_archive(binary, target, second_dir, 1_700_000_000)
                 self.assertEqual(first.read_bytes(), second.read_bytes())
-                self.assertTrue(first.name.startswith("hyphae-0.1.0-alpha.1-"))
+                self.assertTrue(first.name.startswith("hyphae-0.1.0-"))
 
     def test_checksum_manifest_is_complete_and_tamper_evident(self) -> None:
         with tempfile.TemporaryDirectory(prefix="hyphae-checksums-") as temporary:
@@ -42,13 +42,13 @@ class PackageTests(unittest.TestCase):
                 verify_checksums(root)
 
     def test_release_tag_and_slsa_predicate_are_bound_to_source(self) -> None:
-        require_matching_tag("v0.1.0-alpha.1")
+        require_matching_tag("v0.1.0")
         with self.assertRaisesRegex(RuntimeError, "does not match"):
-            require_matching_tag("v0.1.0")
+            require_matching_tag("v0.1.1")
         predicate = build_predicate(
             target="x86_64-unknown-linux-gnu",
             commit="a" * 40,
-            git_ref="refs/tags/v0.1.0-alpha.1",
+            git_ref="refs/tags/v0.1.0",
             invocation_id="https://github.com/celiumsai/hyphae/actions/runs/1/attempts/1",
             runner_os="Linux",
             runner_arch="X64",

@@ -1,6 +1,6 @@
 # Logical snapshot format v1
 
-Status: normative for disk format `1` while Hyphae remains pre-`0.1.0`.
+Status: normative for Hyphae `0.1.0` disk format `1`.
 
 A snapshot is a portable, logical image of the materialized KV state at one
 verified log checkpoint. It never copies redb implementation files. Entries

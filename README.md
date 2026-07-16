@@ -3,14 +3,13 @@
 Hyphae is an autonomous, embeddable, and verifiable data engine written in
 Rust. Its base experience is one `hyphae` binary and one data directory.
 
-> **Status:** private pre-release. The current version is
-> `0.1.0-alpha.1`; none of the `0.1.0` compatibility guarantees apply until
-> every release gate is green.
+> **Status:** private `0.1.0` release candidate. Compatibility guarantees are
+> locked only after every release gate is green on the exact release commit.
 
 The durable core, deterministic query/retrieval, offline result proofs, secure
 optional `/v1` server, five equivalent public clients, optional framework
-adapters, portable recovery, and release-candidate automation are locally
-validated. Their final native CI and signed-release evidence remains open.
+adapters, portable recovery, and release-candidate automation are implemented
+and validated. The final security workflow gate remains open.
 
 ## Product contract
 

@@ -1,6 +1,6 @@
 # Result proof format v1
 
-Status: normative for proof format `1` while Hyphae remains pre-`0.1.0`.
+Status: normative for Hyphae `0.1.0` proof format `1`.
 
 A result proof is a portable canonical envelope. Its referenced logical
 snapshot is the complete state witness; it is not embedded repeatedly in each

@@ -1,6 +1,6 @@
 # Append-only log format v1
 
-Status: normative for disk format `1` while Hyphae remains pre-`0.1.0`.
+Status: normative for Hyphae `0.1.0` disk format `1`.
 
 All integers are unsigned little-endian. A segment is a sequence of frames;
 there is no mutable segment header. The initial segment starts with sequence
