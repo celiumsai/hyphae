@@ -1,7 +1,7 @@
 # Phase 6 equivalent-client gate
 
-Status: implementation and local validation complete; native CI evidence on
-the branch/release commit remains required before the roadmap phase is closed.
+Status: complete. Rust, TypeScript, Python, CLI, and MCP pass the common live
+suite; any later release commit must repeat that evidence.
 
 ## Surfaces covered
 

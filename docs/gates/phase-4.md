@@ -1,7 +1,7 @@
 # Phase 4 verifiable-provenance gate
 
-Status: implementation and local validation complete; cross-platform remote
-CI evidence is required before the roadmap phase is declared closed.
+Status: complete. Proof and adversarial verification tests pass in the native
+Linux, macOS, and Windows matrix; any later release commit must repeat them.
 
 ## Invariants covered
 

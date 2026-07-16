@@ -1,8 +1,8 @@
 # Phase 5 secure `/v1` API gate
 
-Status: implementation and local validation complete; native Linux, macOS,
-and Windows CI evidence is required before the roadmap phase is declared
-closed.
+Status: complete. Contract, isolation, authentication, and limit tests pass in
+the native Linux, macOS, and Windows matrix; any later release commit must
+repeat them.
 
 ## Invariants covered
 

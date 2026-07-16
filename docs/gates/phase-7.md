@@ -1,7 +1,7 @@
 # Phase 7 optional-integration gate
 
-Status: implementation and local validation complete; native CI evidence on
-the branch/release commit remains required before the roadmap phase is closed.
+Status: complete. Optional adapters pass public-boundary and live conformance
+checks, and Astro, Next, and Vite build without Hyphae installed.
 
 ## Boundaries covered
 

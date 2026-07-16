@@ -3,9 +3,9 @@
 The phases are ordered gates. A later phase may be prototyped early, but it
 cannot be declared complete while an earlier gate is red.
 
-Current status: Phases 0 and 1 are complete. Phase 2 through phase 8
-implementations and local validation are complete; their cross-platform,
-security, and signed-release CI gates remain open. See
+Current status: Phases 0 through 8 are complete for the private, untagged
+`0.1.0` release candidate. Any source change invalidates closure until the
+complete hosted matrix passes again on the new exact commit. See
 [`gates/phase-2.md`](gates/phase-2.md),
 [`gates/phase-3.md`](gates/phase-3.md),
 [`gates/phase-4.md`](gates/phase-4.md),

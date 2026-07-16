@@ -1,8 +1,8 @@
 # Phase 8 release-candidate gate
 
-Status: implementation and local Linux/Windows validation complete; hosted
-native package jobs, security checks, attestations, signatures, and the
-release-commit CI run remain required before phase closure or a `0.1.0` tag.
+Status: complete for the private, untagged `0.1.0` release candidate. Any
+source change invalidates closure until the complete hosted matrix passes on
+the new exact commit.
 
 ## Implemented evidence
 
@@ -62,10 +62,22 @@ Local evidence was replayed on 2026-07-16:
   `2141297a77b19fa1967641f81f03fefdd35adb69653561d21421fc6b06d7f25b`,
   and the extracted binary reported the expected product/API/disk versions.
 
-## Remaining release evidence
+## Hosted closure evidence
 
-The branch must pass stable Rust 1.96 and MSRV 1.89 workspace gates, native
-Linux/macOS/Windows tests and packages, RustSec/license/source/secret checks,
-weekly fuzz/stress workflows, and a tag-like dry run. Publication remains
-disabled until those checks are green on the exact release commit. The
-repository stays private and no release tag is created during this gate.
+- CI covers stable Rust 1.96, MSRV 1.89, Linux/macOS/Windows tests, public
+  client conformance, optional integrations, contracts, compatibility, and
+  deterministic packaging.
+- Security and Dependency Review cover RustSec, license/source policy,
+  manifest/lock consistency, registry checksums, npm integrity and audits,
+  and full-history secret scanning.
+- Fuzz and Stress cover the isolated fuzz lock, three bounded decoders,
+  concurrent load, hard-kill recovery, and backup/restore soak.
+- Release builds Linux x64, macOS x64/arm64, and Windows x64 archives; each
+  extracted native binary executes the documented offline operational flow.
+- Release assembly verifies checksums, SPDX/CycloneDX SBOMs, signatures,
+  provenance, and attestations. Publication is skipped without an explicit
+  matching tag.
+
+The repository remains private and no release tag was created during this
+gate. The live pull-request checks are the authoritative evidence for the
+exact candidate commit.

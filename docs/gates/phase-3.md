@@ -1,7 +1,7 @@
 # Phase 3 query and retrieval gate
 
-Status: implementation and local validation complete; cross-platform remote
-CI evidence is required before the roadmap phase is declared closed.
+Status: complete. Query/retrieval tests pass in the native Linux, macOS, and
+Windows matrix; any later release commit must repeat that evidence.
 
 ## Invariants covered
 

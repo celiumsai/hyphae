@@ -22,4 +22,6 @@ to the current private development line.
 - Result proofs are verifiable offline.
 - External providers are optional and cannot enter the core dependency path.
 
-These are release gates, not claims about the current alpha.
+These guarantees are validated release gates for the private, untagged
+`0.1.0` candidate. Any source change requires the complete gate matrix to pass
+again on the new exact commit.
