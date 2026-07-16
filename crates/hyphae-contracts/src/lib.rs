@@ -5,76 +5,48 @@
 pub mod v1;
 
 /// `OpenAPI` 3.1 document for HTTP API version 1.
-pub const OPENAPI_V1: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../contracts/openapi/hyphae-v1.yaml"
-));
+pub const OPENAPI_V1: &str = include_str!("../assets/openapi/hyphae-v1.yaml");
 
 /// JSON Schema for the version 1 capability response.
-pub const CAPABILITIES_SCHEMA_V1: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../contracts/json-schema/capabilities-v1.schema.json"
-));
+pub const CAPABILITIES_SCHEMA_V1: &str =
+    include_str!("../assets/json-schema/capabilities-v1.schema.json");
 
 /// JSON Schema for the version 1 error envelope.
-pub const ERROR_SCHEMA_V1: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../contracts/json-schema/error-v1.schema.json"
-));
+pub const ERROR_SCHEMA_V1: &str = include_str!("../assets/json-schema/error-v1.schema.json");
 
 /// JSON Schema for version 1 liveness and readiness responses.
-pub const HEALTH_SCHEMA_V1: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../contracts/json-schema/health-v1.schema.json"
-));
+pub const HEALTH_SCHEMA_V1: &str = include_str!("../assets/json-schema/health-v1.schema.json");
 
 /// JSON Schema for version 1 atomic put requests.
-pub const PUT_REQUEST_SCHEMA_V1: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../contracts/json-schema/put-request-v1.schema.json"
-));
+pub const PUT_REQUEST_SCHEMA_V1: &str =
+    include_str!("../assets/json-schema/put-request-v1.schema.json");
 
 /// JSON Schema for version 1 atomic delete requests.
-pub const DELETE_REQUEST_SCHEMA_V1: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../contracts/json-schema/delete-request-v1.schema.json"
-));
+pub const DELETE_REQUEST_SCHEMA_V1: &str =
+    include_str!("../assets/json-schema/delete-request-v1.schema.json");
 
 /// JSON Schema for version 1 exact-get requests.
-pub const GET_REQUEST_SCHEMA_V1: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../contracts/json-schema/get-request-v1.schema.json"
-));
+pub const GET_REQUEST_SCHEMA_V1: &str =
+    include_str!("../assets/json-schema/get-request-v1.schema.json");
 
 /// JSON Schema for version 1 proof-bearing get responses.
-pub const GET_RESPONSE_SCHEMA_V1: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../contracts/json-schema/get-response-v1.schema.json"
-));
+pub const GET_RESPONSE_SCHEMA_V1: &str =
+    include_str!("../assets/json-schema/get-response-v1.schema.json");
 
 /// JSON Schema for version 1 durable commit receipts.
-pub const COMMIT_RECEIPT_SCHEMA_V1: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../contracts/json-schema/commit-receipt-v1.schema.json"
-));
+pub const COMMIT_RECEIPT_SCHEMA_V1: &str =
+    include_str!("../assets/json-schema/commit-receipt-v1.schema.json");
 
 /// JSON Schema for version 1 structured query requests.
-pub const QUERY_REQUEST_SCHEMA_V1: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../contracts/json-schema/query-request-v1.schema.json"
-));
+pub const QUERY_REQUEST_SCHEMA_V1: &str =
+    include_str!("../assets/json-schema/query-request-v1.schema.json");
 
 /// JSON Schema for version 1 proof-bearing query responses.
-pub const QUERY_RESPONSE_SCHEMA_V1: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../contracts/json-schema/query-response-v1.schema.json"
-));
+pub const QUERY_RESPONSE_SCHEMA_V1: &str =
+    include_str!("../assets/json-schema/query-response-v1.schema.json");
 
 /// JSON Schema for version 1 result-proof transport.
-pub const PROOF_SCHEMA_V1: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../contracts/json-schema/proof-v1.schema.json"
-));
+pub const PROOF_SCHEMA_V1: &str = include_str!("../assets/json-schema/proof-v1.schema.json");
 
 #[cfg(test)]
 mod tests {
@@ -133,8 +105,62 @@ mod tests {
             assert!(operation.is_some(), "missing {method} {path}");
         }
 
-        let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../contracts/openapi");
+        let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/openapi");
         validate_external_schema_refs(&document, &base)?;
+        Ok(())
+    }
+
+    #[test]
+    fn packaged_contract_assets_match_workspace_canonical_files() -> Result<(), Box<dyn Error>> {
+        let canonical_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../contracts");
+        if !canonical_root.is_dir() {
+            return Ok(());
+        }
+
+        for (relative, packaged) in [
+            ("openapi/hyphae-v1.yaml", OPENAPI_V1),
+            (
+                "json-schema/capabilities-v1.schema.json",
+                CAPABILITIES_SCHEMA_V1,
+            ),
+            ("json-schema/error-v1.schema.json", ERROR_SCHEMA_V1),
+            ("json-schema/health-v1.schema.json", HEALTH_SCHEMA_V1),
+            (
+                "json-schema/put-request-v1.schema.json",
+                PUT_REQUEST_SCHEMA_V1,
+            ),
+            (
+                "json-schema/delete-request-v1.schema.json",
+                DELETE_REQUEST_SCHEMA_V1,
+            ),
+            (
+                "json-schema/get-request-v1.schema.json",
+                GET_REQUEST_SCHEMA_V1,
+            ),
+            (
+                "json-schema/get-response-v1.schema.json",
+                GET_RESPONSE_SCHEMA_V1,
+            ),
+            (
+                "json-schema/commit-receipt-v1.schema.json",
+                COMMIT_RECEIPT_SCHEMA_V1,
+            ),
+            (
+                "json-schema/query-request-v1.schema.json",
+                QUERY_REQUEST_SCHEMA_V1,
+            ),
+            (
+                "json-schema/query-response-v1.schema.json",
+                QUERY_RESPONSE_SCHEMA_V1,
+            ),
+            ("json-schema/proof-v1.schema.json", PROOF_SCHEMA_V1),
+        ] {
+            assert_eq!(
+                fs::read_to_string(canonical_root.join(relative))?,
+                packaged,
+                "packaged contract asset differs from contracts/{relative}"
+            );
+        }
         Ok(())
     }
 

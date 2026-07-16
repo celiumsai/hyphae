@@ -16,5 +16,9 @@ hyphae-contracts = "0.1.0"
 Use this crate when implementing a client, server adapter, or conformance tool
 against the public wire contract.
 
+The crate ships a byte-identical package-local mirror of the canonical files
+under the repository-level `contracts/` directory. Workspace tests reject
+drift between the two copies.
+
 Apache-2.0. Canonical contract files and security policy:
 [`celiumsai/hyphae`](https://github.com/celiumsai/hyphae).

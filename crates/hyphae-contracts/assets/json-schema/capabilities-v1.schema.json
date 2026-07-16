@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CapabilitiesV1",
+  "description": "Public capability response.",
+  "type": "object",
+  "properties": {
+    "api_version": {
+      "description": "Fixed API path version.",
+      "type": "string"
+    },
+    "disk_format_version": {
+      "description": "Current numeric data-directory format.",
+      "type": "integer",
+      "format": "uint16",
+      "maximum": 65535,
+      "minimum": 0
+    },
+    "features": {
+      "description": "Sorted implemented feature identifiers.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "limits": {
+      "description": "Effective policy limits visible to clients.",
+      "$ref": "#/$defs/ApiLimitsV1"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "api_version",
+    "disk_format_version",
+    "features",
+    "limits"
+  ],
+  "$defs": {
+    "ApiLimitsV1": {
+      "description": "Public server policy limits.",
+      "type": "object",
+      "properties": {
+        "aggregation_groups": {
+          "description": "Maximum distinct aggregation groups.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "batch_items": {
+          "description": "Maximum records or keys in one atomic batch.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "concurrent_operations": {
+          "description": "Maximum admitted concurrent data operations.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "document_bytes": {
+          "description": "Maximum canonical structured document payload bytes.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "filter_depth": {
+          "description": "Maximum recursive filter depth.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "filter_nodes": {
+          "description": "Maximum recursive filter nodes.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "group_fields": {
+          "description": "Maximum aggregation group fields.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "json_depth": {
+          "description": "Maximum JSON nesting depth.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "json_nodes": {
+          "description": "Maximum JSON nodes.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "key_bytes": {
+          "description": "Maximum decoded binary key bytes.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "matched_records": {
+          "description": "Maximum matched records retained by one query.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "metrics": {
+          "description": "Maximum aggregation metrics.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "proof_bytes": {
+          "description": "Maximum canonical result-proof bytes before base64 transport.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "query_timeout_ms": {
+          "description": "Maximum requested query timeout.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "request_body_bytes": {
+          "description": "Maximum complete JSON request bytes.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "request_body_timeout_ms": {
+          "description": "Maximum time allowed to receive one complete JSON body.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "response_bytes": {
+          "description": "Maximum serialized JSON response bytes.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "result_rows": {
+          "description": "Maximum rows returned by one query page.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "scanned_records": {
+          "description": "Maximum records inspected globally by one query.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "sort_fields": {
+          "description": "Maximum explicit sort fields.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "witness_bytes": {
+          "description": "Maximum downloadable canonical snapshot witness bytes.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "key_bytes",
+        "document_bytes",
+        "request_body_bytes",
+        "json_depth",
+        "json_nodes",
+        "request_body_timeout_ms",
+        "batch_items",
+        "scanned_records",
+        "matched_records",
+        "result_rows",
+        "aggregation_groups",
+        "filter_nodes",
+        "filter_depth",
+        "sort_fields",
+        "group_fields",
+        "metrics",
+        "concurrent_operations",
+        "query_timeout_ms",
+        "proof_bytes",
+        "witness_bytes",
+        "response_bytes"
+      ]
+    }
+  }
+}

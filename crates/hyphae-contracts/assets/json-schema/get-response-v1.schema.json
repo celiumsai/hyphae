@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GetResponseV1",
+  "description": "Proof-bearing exact lookup response.",
+  "type": "object",
+  "properties": {
+    "found": {
+      "description": "Whether the key exists at the proven checkpoint.",
+      "type": "boolean"
+    },
+    "proof": {
+      "description": "Complete result proof and witness identity.",
+      "$ref": "#/$defs/ProofV1"
+    },
+    "record": {
+      "description": "Present record, or `null` for proven absence.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RecordV1"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "found",
+    "proof"
+  ],
+  "$defs": {
+    "ProofV1": {
+      "description": "Portable result proof plus its downloadable witness reference.",
+      "type": "object",
+      "properties": {
+        "anchor_digest": {
+          "description": "Caller-pinnable anchor digest as hexadecimal.",
+          "type": "string"
+        },
+        "checkpoint_digest": {
+          "description": "Commit digest as hexadecimal, absent for empty history.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "checkpoint_sequence": {
+          "description": "Snapshot/log checkpoint sequence.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "data": {
+          "description": "Canonical `.hyproof` bytes in standard padded base64.",
+          "type": "string"
+        },
+        "encoding": {
+          "description": "Fixed encoding identifier `base64`.",
+          "type": "string"
+        },
+        "proof_digest": {
+          "description": "Canonical proof digest as hexadecimal.",
+          "type": "string"
+        },
+        "snapshot_digest": {
+          "description": "Canonical logical snapshot digest as hexadecimal.",
+          "type": "string"
+        },
+        "witness": {
+          "description": "Authenticated endpoint for the complete offline witness.",
+          "$ref": "#/$defs/WitnessV1"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "encoding",
+        "data",
+        "proof_digest",
+        "anchor_digest",
+        "checkpoint_sequence",
+        "snapshot_digest",
+        "witness"
+      ]
+    },
+    "RecordV1": {
+      "description": "One structured record on the wire.",
+      "type": "object",
+      "properties": {
+        "key_hex": {
+          "description": "Nonempty binary key encoded as hexadecimal.",
+          "type": "string"
+        },
+        "value": {
+          "description": "Natural JSON structured value with the reserved bytes envelope."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "key_hex",
+        "value"
+      ]
+    },
+    "WitnessV1": {
+      "description": "Download reference for one canonical logical snapshot.",
+      "type": "object",
+      "properties": {
+        "file_bytes": {
+          "description": "Complete snapshot file length.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "path": {
+          "description": "Versioned relative HTTP path.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "file_bytes"
+      ]
+    }
+  }
+}

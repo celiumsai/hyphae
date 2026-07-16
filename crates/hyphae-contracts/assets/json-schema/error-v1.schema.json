@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ErrorV1",
+  "description": "Stable version 1 public error envelope.",
+  "type": "object",
+  "properties": {
+    "code": {
+      "description": "Stable machine-readable error code.",
+      "type": "string"
+    },
+    "message": {
+      "description": "Bounded human-readable diagnostic.",
+      "type": "string"
+    },
+    "request_id": {
+      "description": "Generated request identifier also returned as a response header.",
+      "type": "string",
+      "format": "uuid"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "code",
+    "message",
+    "request_id"
+  ]
+}

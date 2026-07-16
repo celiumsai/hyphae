@@ -9,7 +9,12 @@ use std::{
 };
 
 use hyphae_client::HyphaeClient;
-use hyphae_contracts::v1::{DeleteRequestV1, GetRequestV1, PutRequestV1, QueryRequestV1};
+use hyphae_contracts::{
+    CAPABILITIES_SCHEMA_V1, COMMIT_RECEIPT_SCHEMA_V1, DELETE_REQUEST_SCHEMA_V1,
+    GET_REQUEST_SCHEMA_V1, GET_RESPONSE_SCHEMA_V1, PUT_REQUEST_SCHEMA_V1, QUERY_REQUEST_SCHEMA_V1,
+    QUERY_RESPONSE_SCHEMA_V1,
+    v1::{DeleteRequestV1, GetRequestV1, PutRequestV1, QueryRequestV1},
+};
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
@@ -17,22 +22,14 @@ const MCP_PROTOCOL: &str = "2025-11-25";
 const MAX_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 const EMPTY_INPUT_SCHEMA: &str =
     r#"{"type":"object","properties":{},"additionalProperties":false}"#;
-const CAPABILITIES_OUTPUT_SCHEMA: &str =
-    include_str!("../../../contracts/json-schema/capabilities-v1.schema.json");
-const PUT_INPUT_SCHEMA: &str =
-    include_str!("../../../contracts/json-schema/put-request-v1.schema.json");
-const DELETE_INPUT_SCHEMA: &str =
-    include_str!("../../../contracts/json-schema/delete-request-v1.schema.json");
-const GET_INPUT_SCHEMA: &str =
-    include_str!("../../../contracts/json-schema/get-request-v1.schema.json");
-const QUERY_INPUT_SCHEMA: &str =
-    include_str!("../../../contracts/json-schema/query-request-v1.schema.json");
-const RECEIPT_OUTPUT_SCHEMA: &str =
-    include_str!("../../../contracts/json-schema/commit-receipt-v1.schema.json");
-const GET_OUTPUT_SCHEMA: &str =
-    include_str!("../../../contracts/json-schema/get-response-v1.schema.json");
-const QUERY_OUTPUT_SCHEMA: &str =
-    include_str!("../../../contracts/json-schema/query-response-v1.schema.json");
+const CAPABILITIES_OUTPUT_SCHEMA: &str = CAPABILITIES_SCHEMA_V1;
+const PUT_INPUT_SCHEMA: &str = PUT_REQUEST_SCHEMA_V1;
+const DELETE_INPUT_SCHEMA: &str = DELETE_REQUEST_SCHEMA_V1;
+const GET_INPUT_SCHEMA: &str = GET_REQUEST_SCHEMA_V1;
+const QUERY_INPUT_SCHEMA: &str = QUERY_REQUEST_SCHEMA_V1;
+const RECEIPT_OUTPUT_SCHEMA: &str = COMMIT_RECEIPT_SCHEMA_V1;
+const GET_OUTPUT_SCHEMA: &str = GET_RESPONSE_SCHEMA_V1;
+const QUERY_OUTPUT_SCHEMA: &str = QUERY_RESPONSE_SCHEMA_V1;
 
 struct Session {
     client: HyphaeClient,

@@ -11,16 +11,15 @@ release commit after its complete hosted gate is green.
    reports the intended `vVERSION` tag.
 2. Confirm CI, Security, Dependency Review, Fuzz, Stress, and the native Release
    matrix succeeded on that exact commit.
-3. Run the workspace tests and inspect every package file list:
+3. Run the workspace tests and the package-content audit:
 
    ```bash
    cargo test --workspace --all-features --locked
-   for crate in hyphae-core hyphae-query hyphae-retrieval hyphae-storage \
-     hyphae-engine hyphae-contracts hyphae-client hyphae-server \
-     hyphae-pliegors hyphae-cli; do
-     cargo package --locked --list -p "$crate"
-   done
+   python tools/check_crate_packages.py
    ```
+
+   The audit rejects compile-time assets that resolve outside a crate or are
+   absent from its generated package file list.
 
 4. Authenticate with a least-privilege crates.io token using `cargo login`.
    Never place the token in a command line, repository file, workflow log, or

@@ -1,0 +1,341 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "QueryResponseV1",
+  "description": "Proof-bearing structured query response.",
+  "type": "object",
+  "properties": {
+    "aggregation": {
+      "description": "Optional complete aggregation.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AggregationResultV1"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "matched_records": {
+      "description": "Records matching before pagination.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "next_cursor": {
+      "description": "Logical continuation cursor when more rows exist.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CursorV1"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "proof": {
+      "description": "Complete result proof and witness identity.",
+      "$ref": "#/$defs/ProofV1"
+    },
+    "rows": {
+      "description": "Final page rows.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/RecordV1"
+      }
+    },
+    "scanned_records": {
+      "description": "Records inspected globally.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "rows",
+    "scanned_records",
+    "matched_records",
+    "proof"
+  ],
+  "$defs": {
+    "AggregationResultV1": {
+      "description": "Complete aggregation response.",
+      "type": "object",
+      "properties": {
+        "grouped": {
+          "description": "Whether explicit group fields were requested.",
+          "type": "boolean"
+        },
+        "groups": {
+          "description": "Deterministically ordered groups.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GroupResultV1"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "grouped",
+        "groups"
+      ]
+    },
+    "CursorV1": {
+      "description": "Logical continuation cursor.",
+      "type": "object",
+      "properties": {
+        "key_hex": {
+          "description": "Final binary key tie-breaker as hexadecimal.",
+          "type": "string"
+        },
+        "sort_values": {
+          "description": "Normalized sort values; JSON null represents missing/null.",
+          "type": "array",
+          "items": true
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "sort_values",
+        "key_hex"
+      ]
+    },
+    "GroupKeyValueV1": {
+      "description": "One aggregation group-key component preserving missing versus explicit null.",
+      "oneOf": [
+        {
+          "description": "The requested field path did not resolve.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "missing"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "description": "The path resolved, including when the structured value is explicit null.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "value"
+            },
+            "value": {
+              "description": "Natural JSON structured value."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        }
+      ]
+    },
+    "GroupResultV1": {
+      "description": "One deterministic aggregate group.",
+      "type": "object",
+      "properties": {
+        "key": {
+          "description": "Ordered group values with an explicit missing/null distinction.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GroupKeyValueV1"
+          }
+        },
+        "metrics": {
+          "description": "Metric results in request order.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NamedMetricResultV1"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "key",
+        "metrics"
+      ]
+    },
+    "MetricValueV1": {
+      "description": "Versioned aggregate metric output.",
+      "oneOf": [
+        {
+          "description": "Unsigned count.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "count"
+            },
+            "value": {
+              "description": "Count value.",
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "value"
+          ]
+        },
+        {
+          "description": "Checked signed integer, represented as decimal to preserve `i128`.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "integer"
+            },
+            "value": {
+              "description": "Decimal result, or null for no non-null inputs.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "description": "Minimum or maximum structured value.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "value"
+            },
+            "value": {
+              "description": "Result value, or null for no non-null inputs."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ]
+        }
+      ]
+    },
+    "NamedMetricResultV1": {
+      "description": "Named aggregate result.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "description": "Metric name from the request.",
+          "type": "string"
+        },
+        "result": {
+          "description": "Typed metric value.",
+          "$ref": "#/$defs/MetricValueV1"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "result"
+      ]
+    },
+    "ProofV1": {
+      "description": "Portable result proof plus its downloadable witness reference.",
+      "type": "object",
+      "properties": {
+        "anchor_digest": {
+          "description": "Caller-pinnable anchor digest as hexadecimal.",
+          "type": "string"
+        },
+        "checkpoint_digest": {
+          "description": "Commit digest as hexadecimal, absent for empty history.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "checkpoint_sequence": {
+          "description": "Snapshot/log checkpoint sequence.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "data": {
+          "description": "Canonical `.hyproof` bytes in standard padded base64.",
+          "type": "string"
+        },
+        "encoding": {
+          "description": "Fixed encoding identifier `base64`.",
+          "type": "string"
+        },
+        "proof_digest": {
+          "description": "Canonical proof digest as hexadecimal.",
+          "type": "string"
+        },
+        "snapshot_digest": {
+          "description": "Canonical logical snapshot digest as hexadecimal.",
+          "type": "string"
+        },
+        "witness": {
+          "description": "Authenticated endpoint for the complete offline witness.",
+          "$ref": "#/$defs/WitnessV1"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "encoding",
+        "data",
+        "proof_digest",
+        "anchor_digest",
+        "checkpoint_sequence",
+        "snapshot_digest",
+        "witness"
+      ]
+    },
+    "RecordV1": {
+      "description": "One structured record on the wire.",
+      "type": "object",
+      "properties": {
+        "key_hex": {
+          "description": "Nonempty binary key encoded as hexadecimal.",
+          "type": "string"
+        },
+        "value": {
+          "description": "Natural JSON structured value with the reserved bytes envelope."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "key_hex",
+        "value"
+      ]
+    },
+    "WitnessV1": {
+      "description": "Download reference for one canonical logical snapshot.",
+      "type": "object",
+      "properties": {
+        "file_bytes": {
+          "description": "Complete snapshot file length.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "path": {
+          "description": "Versioned relative HTTP path.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "file_bytes"
+      ]
+    }
+  }
+}

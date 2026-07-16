@@ -2,7 +2,7 @@
 
 //! Regenerates checked-in JSON Schema 2020-12 public contract files.
 
-use std::{error::Error, fs, path::Path};
+use std::{env, error::Error, fs, path::PathBuf};
 
 use hyphae_contracts::v1::{
     CapabilitiesV1, CommitReceiptV1, DeleteRequestV1, ErrorV1, GetRequestV1, GetResponseV1,
@@ -11,7 +11,11 @@ use hyphae_contracts::v1::{
 use schemars::{JsonSchema, SchemaGenerator};
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let directory = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../contracts/json-schema");
+    let directory = env::args_os().nth(1).map_or_else(
+        || PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/json-schema"),
+        PathBuf::from,
+    );
+    fs::create_dir_all(&directory)?;
     write::<CapabilitiesV1>(&directory, "capabilities-v1.schema.json")?;
     write::<ErrorV1>(&directory, "error-v1.schema.json")?;
     write::<HealthV1>(&directory, "health-v1.schema.json")?;
@@ -26,7 +30,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn write<T: JsonSchema>(directory: &Path, name: &str) -> Result<(), Box<dyn Error>> {
+fn write<T: JsonSchema>(directory: &std::path::Path, name: &str) -> Result<(), Box<dyn Error>> {
     let schema = SchemaGenerator::default().into_root_schema_for::<T>();
     let mut encoded = serde_json::to_string_pretty(&schema)?;
     encoded.push('\n');

@@ -63,9 +63,8 @@ fn fixture_path(root: &Path, relative: &str) -> Result<PathBuf, Box<dyn Error>> 
 
 #[test]
 fn disk_format_1_opens_rebuilds_and_preserves_idempotency() -> Result<(), Box<dyn Error>> {
-    let fixture: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../compatibility/v1/data-directory.json"
-    ))?;
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/data-directory.json"))?;
     assert_eq!(fixture["fixture_version"], 1);
     assert_eq!(fixture["disk_format_version"], 1);
 

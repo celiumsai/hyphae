@@ -1,0 +1,498 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "QueryRequestV1",
+  "description": "Complete version 1 structured query request.",
+  "type": "object",
+  "properties": {
+    "aggregation": {
+      "description": "Optional global or grouped aggregation.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AggregationPlanV1"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "cursor": {
+      "description": "Optional logical continuation cursor.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CursorV1"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "filter": {
+      "description": "Recursive filter; defaults to match-all.",
+      "$ref": "#/$defs/FilterV1",
+      "default": {
+        "op": "match_all"
+      }
+    },
+    "limit": {
+      "description": "Final page size.",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "sort": {
+      "description": "Deterministic sort fields.",
+      "type": "array",
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/SortFieldV1"
+      }
+    },
+    "timeout_ms": {
+      "description": "Requested cooperative query timeout.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint64",
+      "minimum": 0
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "limit"
+  ],
+  "$defs": {
+    "AggregationPlanV1": {
+      "description": "Optional grouped aggregation plan.",
+      "type": "object",
+      "properties": {
+        "group_by": {
+          "description": "Ordered group-key paths.",
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "metrics": {
+          "description": "Named metrics.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NamedMetricV1"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "group_by",
+        "metrics"
+      ]
+    },
+    "CompareOperatorV1": {
+      "description": "Ordered comparison operator.",
+      "oneOf": [
+        {
+          "description": "Exact equality.",
+          "type": "string",
+          "const": "equal"
+        },
+        {
+          "description": "Exact inequality.",
+          "type": "string",
+          "const": "not_equal"
+        },
+        {
+          "description": "Same-variant less than.",
+          "type": "string",
+          "const": "less"
+        },
+        {
+          "description": "Same-variant less than or equal.",
+          "type": "string",
+          "const": "less_or_equal"
+        },
+        {
+          "description": "Same-variant greater than.",
+          "type": "string",
+          "const": "greater"
+        },
+        {
+          "description": "Same-variant greater than or equal.",
+          "type": "string",
+          "const": "greater_or_equal"
+        }
+      ]
+    },
+    "CursorV1": {
+      "description": "Logical continuation cursor.",
+      "type": "object",
+      "properties": {
+        "key_hex": {
+          "description": "Final binary key tie-breaker as hexadecimal.",
+          "type": "string"
+        },
+        "sort_values": {
+          "description": "Normalized sort values; JSON null represents missing/null.",
+          "type": "array",
+          "items": true
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "sort_values",
+        "key_hex"
+      ]
+    },
+    "FilterV1": {
+      "description": "Versioned recursive filter expression.",
+      "oneOf": [
+        {
+          "description": "Match every record.",
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "match_all"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op"
+          ]
+        },
+        {
+          "description": "Test whether a path resolves.",
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "exists"
+            },
+            "path": {
+              "description": "Exact object path; an empty list selects the root.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "path"
+          ]
+        },
+        {
+          "description": "Compare one resolved value.",
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "compare"
+            },
+            "operator": {
+              "description": "Ordered operator.",
+              "$ref": "#/$defs/CompareOperatorV1"
+            },
+            "path": {
+              "description": "Exact object path.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "value": {
+              "description": "Natural JSON literal."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "path",
+            "operator",
+            "value"
+          ]
+        },
+        {
+          "description": "Test a string or bytes prefix.",
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "const": "prefix"
+            },
+            "path": {
+              "description": "Exact object path.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "prefix": {
+              "description": "Same-type prefix literal."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "path",
+            "prefix"
+          ]
+        },
+        {
+          "description": "Test array membership, string substring, or byte subsequence.",
+          "type": "object",
+          "properties": {
+            "needle": {
+              "description": "Same-type needle literal."
+            },
+            "op": {
+              "type": "string",
+              "const": "contains"
+            },
+            "path": {
+              "description": "Exact object path.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "path",
+            "needle"
+          ]
+        },
+        {
+          "description": "Require every child.",
+          "type": "object",
+          "properties": {
+            "filters": {
+              "description": "Child filters.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/FilterV1"
+              }
+            },
+            "op": {
+              "type": "string",
+              "const": "all"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "filters"
+          ]
+        },
+        {
+          "description": "Require at least one child.",
+          "type": "object",
+          "properties": {
+            "filters": {
+              "description": "Child filters.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/FilterV1"
+              }
+            },
+            "op": {
+              "type": "string",
+              "const": "any"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "filters"
+          ]
+        },
+        {
+          "description": "Negate one child.",
+          "type": "object",
+          "properties": {
+            "filter": {
+              "description": "Child filter.",
+              "$ref": "#/$defs/FilterV1"
+            },
+            "op": {
+              "type": "string",
+              "const": "not"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "op",
+            "filter"
+          ]
+        }
+      ]
+    },
+    "NamedMetricV1": {
+      "description": "One named aggregation metric.",
+      "oneOf": [
+        {
+          "description": "Count every matched record.",
+          "type": "object",
+          "properties": {
+            "metric": {
+              "type": "string",
+              "const": "count"
+            },
+            "name": {
+              "description": "Unique result name.",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "metric",
+            "name"
+          ]
+        },
+        {
+          "description": "Checked integer sum.",
+          "type": "object",
+          "properties": {
+            "metric": {
+              "type": "string",
+              "const": "sum"
+            },
+            "name": {
+              "description": "Unique result name.",
+              "type": "string"
+            },
+            "path": {
+              "description": "Exact object path.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "metric",
+            "name",
+            "path"
+          ]
+        },
+        {
+          "description": "Minimum non-null value.",
+          "type": "object",
+          "properties": {
+            "metric": {
+              "type": "string",
+              "const": "min"
+            },
+            "name": {
+              "description": "Unique result name.",
+              "type": "string"
+            },
+            "path": {
+              "description": "Exact object path.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "metric",
+            "name",
+            "path"
+          ]
+        },
+        {
+          "description": "Maximum non-null value.",
+          "type": "object",
+          "properties": {
+            "metric": {
+              "type": "string",
+              "const": "max"
+            },
+            "name": {
+              "description": "Unique result name.",
+              "type": "string"
+            },
+            "path": {
+              "description": "Exact object path.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "metric",
+            "name",
+            "path"
+          ]
+        }
+      ]
+    },
+    "NullPlacementV1": {
+      "description": "Wire null placement.",
+      "oneOf": [
+        {
+          "description": "Missing/null precede non-null.",
+          "type": "string",
+          "const": "first"
+        },
+        {
+          "description": "Missing/null follow non-null.",
+          "type": "string",
+          "const": "last"
+        }
+      ]
+    },
+    "SortDirectionV1": {
+      "description": "Wire sort direction.",
+      "oneOf": [
+        {
+          "description": "Natural ascending order.",
+          "type": "string",
+          "const": "ascending"
+        },
+        {
+          "description": "Reverse natural order.",
+          "type": "string",
+          "const": "descending"
+        }
+      ]
+    },
+    "SortFieldV1": {
+      "description": "One versioned sort field.",
+      "type": "object",
+      "properties": {
+        "direction": {
+          "description": "Value direction.",
+          "$ref": "#/$defs/SortDirectionV1"
+        },
+        "nulls": {
+          "description": "Explicit missing/null placement.",
+          "$ref": "#/$defs/NullPlacementV1"
+        },
+        "path": {
+          "description": "Exact object path.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "direction",
+        "nulls"
+      ]
+    }
+  }
+}

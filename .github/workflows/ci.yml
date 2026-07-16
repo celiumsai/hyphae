@@ -164,6 +164,8 @@ jobs:
           python-version: 3.11.15
       - name: Build the standalone binary
         run: cargo build -p hyphae-cli --locked
+      - name: Audit publishable crate contents
+        run: python tools/check_crate_packages.py
       - name: Validate documentation and executable embedded example
         run: |
           python tools/check_documentation.py --binary target/debug/hyphae

@@ -5,6 +5,18 @@ for public APIs after `0.1.0`; on-disk format versions are tracked separately.
 
 ## [Unreleased]
 
+### Fixed
+
+- Made the `hyphae-contracts` tarball self-contained by shipping byte-identical
+  OpenAPI and JSON Schema assets inside the crate.
+- Reused the packaged contract constants from the CLI MCP adapter and included
+  the engine compatibility fixture in its crate tarball.
+
+### Added
+
+- Added a release-readiness audit that rejects compile-time assets outside a
+  crate or missing from its generated `cargo package` file list.
+
 ## [0.1.0] - 2026-07-16
 
 ### Added

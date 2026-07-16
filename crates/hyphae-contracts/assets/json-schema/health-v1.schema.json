@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HealthV1",
+  "description": "Liveness or readiness response.",
+  "type": "object",
+  "properties": {
+    "status": {
+      "description": "`live` or `ready`.",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "status"
+  ]
+}
