@@ -1,0 +1,56 @@
+name: Dependency Review
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    name: Review dependency changes
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out candidate history
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable branch
+        with:
+          toolchain: 1.96.0
+      - name: Install pinned Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24.16.0
+          package-manager-cache: false
+      - name: Install pinned Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: 3.11.15
+      - name: Review dependency and lockfile changes
+        run: |
+          python -m unittest tools/test_review_dependencies.py -v
+          python tools/review_dependencies.py \
+            --base "${{ github.event.pull_request.base.sha }}" \
+            --output dependency-review.json
+      - name: Validate locked Rust dependency graphs
+        run: |
+          cargo metadata --locked --format-version 1 > /dev/null
+          cargo metadata --manifest-path fuzz/Cargo.toml --locked --format-version 1 > /dev/null
+      - name: Audit locked JavaScript dependency graphs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for directory in sdks/typescript integrations/javascript integrations/host-smoke; do
+            npm --prefix "$directory" ci --ignore-scripts
+            npm --prefix "$directory" audit --audit-level=moderate
+          done
+      - name: Upload dependency review evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dependency-review
+          path: dependency-review.json
+          if-no-files-found: error
+          retention-days: 14
