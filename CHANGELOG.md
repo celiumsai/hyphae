@@ -35,3 +35,7 @@ for public APIs after `0.1.0`; on-disk format versions are tracked separately.
   model/embedding/operations references, package-specific SDK and MCP guides,
   maintained embedded/HTTP/MCP examples, and automated documentation drift
   validation.
+- Public Rust crates for every supported library, the `hyphae` binary, and the
+  optional PliegoRS adapter, with package-specific README and docs.rs metadata.
+- Official project identity, release badges, website links, and public
+  crates.io installation guidance.

@@ -7,6 +7,11 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
+readme = "README.md"
+keywords.workspace = true
+categories.workspace = true
+description = "Shared version and compatibility constants for the Hyphae data engine."
+documentation = "https://docs.rs/hyphae-core"
 publish.workspace = true
 
 [lints]

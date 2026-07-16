@@ -1,8 +1,9 @@
 # Optional framework adapters
 
 Hyphae integrations are consumers, never core dependencies. Omit them and the
-host application behaves exactly as before. The packages remain private
-pre-release artifacts until publication is explicitly authorized.
+host application behaves exactly as before. The Rust adapter is published as
+`hyphae-pliegors`; the JavaScript adapters remain source packages in this
+repository until they receive an independent registry release.
 
 ## PliegoRS boundary
 

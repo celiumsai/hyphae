@@ -7,6 +7,11 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
+readme = "README.md"
+keywords.workspace = true
+categories.workspace = true
+description = "Versioned OpenAPI and JSON Schema models for the Hyphae /v1 API."
+documentation = "https://docs.rs/hyphae-contracts"
 publish.workspace = true
 
 [dependencies]

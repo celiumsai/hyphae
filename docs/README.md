@@ -31,6 +31,7 @@ linked below. Tests and checked-in compatibility fixtures enforce both.
 - [Run doctor and diagnose recovery](operations/doctor.md)
 - [Troubleshoot common failures](operations/troubleshooting.md)
 - [Verify a release](release/verification.md)
+- [Publish the Rust crates](release/crates-io.md)
 - [Compatibility and versioning](compatibility/versioning.md)
 
 ## Understand correctness

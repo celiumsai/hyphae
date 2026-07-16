@@ -1,12 +1,33 @@
-# Hyphae
+<p align="center">
+  <a href="https://hyphae.dev" aria-label="Hyphae website">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/celiumsai/hyphae/main/.github/assets/hyphae-lockup-reversed.svg">
+      <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/celiumsai/hyphae/main/.github/assets/hyphae-lockup.svg">
+      <img alt="Hyphae" src="https://raw.githubusercontent.com/celiumsai/hyphae/main/.github/assets/hyphae-lockup.svg" width="420">
+    </picture>
+  </a>
+</p>
+
+<p align="center"><strong>Data that can prove itself.</strong></p>
+
+<p align="center">
+  <a href="https://github.com/celiumsai/hyphae/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/celiumsai/hyphae/ci.yml?branch=main&amp;label=CI&amp;logo=github"></a>
+  <a href="https://crates.io/crates/hyphae-engine"><img alt="crates.io" src="https://img.shields.io/crates/v/hyphae-engine?logo=rust"></a>
+  <a href="https://docs.rs/hyphae-engine"><img alt="docs.rs" src="https://img.shields.io/docsrs/hyphae-engine?logo=docs.rs"></a>
+  <a href="https://github.com/celiumsai/hyphae/releases/latest"><img alt="GitHub release" src="https://img.shields.io/github/v/release/celiumsai/hyphae?logo=github"></a>
+  <a href="https://hyphae.dev"><img alt="Website" src="https://img.shields.io/badge/website-hyphae.dev-8FCBC6"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-C86F4A"></a>
+  <img alt="MSRV 1.89" src="https://img.shields.io/badge/MSRV-1.89-43585A?logo=rust">
+</p>
 
 Hyphae is an autonomous, embeddable, and verifiable data engine written in
 Rust. Its base deployment is one native `hyphae` executable and one data
 directory. KV, structured query, recovery, and verification work offline
 without a database, cache, cloud service, embedding provider, or LLM.
 
-> **Status:** private, untagged `0.1.0` release candidate. Publication remains
-> disabled until every release gate is green on the exact selected commit.
+**Current release:** `0.1.0`. Visit [hyphae.dev](https://hyphae.dev), inspect
+the [release artifacts](https://github.com/celiumsai/hyphae/releases/latest),
+or use the crates published under the `hyphae-*` namespace.
 
 ## What Hyphae does
 
@@ -34,6 +55,19 @@ creates proof files explicitly with `--proof-out`.
 
 See the complete [capability matrix](docs/product/capabilities.md), including
 surface differences, default limits, and deliberate non-capabilities.
+
+## Install
+
+Install the single binary from crates.io:
+
+```bash
+cargo install hyphae-cli --version 0.1.0 --locked
+hyphae version --json
+```
+
+For prebuilt Linux, macOS, and Windows archives, download the matching asset
+from the [latest GitHub release](https://github.com/celiumsai/hyphae/releases/latest)
+and follow the [signature and provenance verification guide](docs/release/verification.md).
 
 ## Five-minute local flow
 
@@ -98,6 +132,21 @@ OpenAPI 3.1 and JSON Schema 2020-12 under `contracts/` are the canonical wire
 contracts. Integrations consume public clients only; hosts continue to build
 and run with Hyphae absent.
 
+## Rust crates
+
+| Crate | Purpose | Documentation |
+|---|---|---|
+| [`hyphae-engine`](https://crates.io/crates/hyphae-engine) | Recommended embeddable facade | [docs.rs](https://docs.rs/hyphae-engine) |
+| [`hyphae-storage`](https://crates.io/crates/hyphae-storage) | Durable log, recovery, snapshots, and backups | [docs.rs](https://docs.rs/hyphae-storage) |
+| [`hyphae-query`](https://crates.io/crates/hyphae-query) | Deterministic structured query | [docs.rs](https://docs.rs/hyphae-query) |
+| [`hyphae-retrieval`](https://crates.io/crates/hyphae-retrieval) | Exact provider-neutral vector retrieval | [docs.rs](https://docs.rs/hyphae-retrieval) |
+| [`hyphae-contracts`](https://crates.io/crates/hyphae-contracts) | Versioned `/v1` models and embedded schemas | [docs.rs](https://docs.rs/hyphae-contracts) |
+| [`hyphae-client`](https://crates.io/crates/hyphae-client) | Bounded async Rust HTTP client | [docs.rs](https://docs.rs/hyphae-client) |
+| [`hyphae-server`](https://crates.io/crates/hyphae-server) | Loopback-first `/v1` server | [docs.rs](https://docs.rs/hyphae-server) |
+| [`hyphae-core`](https://crates.io/crates/hyphae-core) | Product and compatibility constants | [docs.rs](https://docs.rs/hyphae-core) |
+| [`hyphae-cli`](https://crates.io/crates/hyphae-cli) | Single `hyphae` binary, verifier, and MCP adapter | [docs.rs](https://docs.rs/hyphae-cli) |
+| [`hyphae-pliegors`](https://crates.io/crates/hyphae-pliegors) | Optional PliegoRS public-contract adapter | [docs.rs](https://docs.rs/hyphae-pliegors) |
+
 ## Documentation
 
 Start at the [documentation index](docs/README.md). Key guides:
@@ -113,6 +162,7 @@ Start at the [documentation index](docs/README.md). Key guides:
 - [Operations and troubleshooting](docs/operations/troubleshooting.md)
 - [Security model](docs/security/threat-model.md)
 - [Release verification](docs/release/verification.md)
+- [crates.io release procedure](docs/release/crates-io.md)
 
 ## Product boundary
 
@@ -167,4 +217,5 @@ this project.
 ## License
 
 Apache License 2.0. See [LICENSE](LICENSE), [NOTICE](NOTICE), and
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The Hyphae name and visual
+identity are covered separately by [TRADEMARKS.md](TRADEMARKS.md).

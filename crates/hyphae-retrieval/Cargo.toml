@@ -7,6 +7,11 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
+readme = "README.md"
+keywords.workspace = true
+categories.workspace = true
+description = "Exact provider-neutral vector retrieval with explicit abstention for Hyphae."
+documentation = "https://docs.rs/hyphae-retrieval"
 publish.workspace = true
 
 [dependencies]

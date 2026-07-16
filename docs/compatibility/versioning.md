@@ -11,6 +11,6 @@ migrate its disk format without changing the HTTP contract. A breaking wire
 change requires a new API path version. A future disk format is rejected by
 an older binary rather than guessed or downgraded.
 
-No untagged private candidate is a public compatibility release. The `0.1.0`
-policy becomes active only for an explicitly authorized tag whose exact
-commit passes every release gate.
+No untagged candidate is a public compatibility release. The policy becomes
+active only for an explicitly authorized tag whose exact commit passes every
+release gate; `v0.1.0` establishes the first public baseline.

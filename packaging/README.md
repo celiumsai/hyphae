@@ -21,11 +21,11 @@ executes the documented offline version, KV, query, compaction, proof,
 backup/restore, and doctor flow from the installed binary.
 
 A manual workflow run executes native build, provenance, SBOM, signing, and
-verification, then uploads a private candidate artifact without publishing a
-release. Publication is reachable only from an explicit `v*` tag, and
+verification, then uploads a candidate artifact without publishing a release.
+Publication is reachable only from an explicit `v*` tag, and
 `finalize_release.py` rejects a tag that does not equal `v` plus the workspace
-version. The repository remains private and untagged until the complete
-`0.1.0` gate is green and publication is explicitly authorized.
+version. A tag may be pushed only after the complete gate is green and
+publication is explicitly authorized.
 
 Run the deterministic unit checks with:
 

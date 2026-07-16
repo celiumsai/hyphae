@@ -4,9 +4,9 @@ Hyphae is a library workspace as well as one executable. Embedding gives an
 application direct local access without HTTP while preserving the same
 durable formats and reference semantics.
 
-The `0.1.0` repository is private and workspace packages have `publish =
-false`; consume an authorized checkout pinned by the application's source
-lock or include the crates through workspace paths.
+The public packages are versioned together on crates.io. Use exact versions
+when reproducibility matters; use workspace paths only while developing the
+engine and an embedding application together.
 
 ## Choose a crate
 
@@ -25,8 +25,8 @@ Applications normally start with `hyphae-engine`:
 
 ```toml
 [dependencies]
-hyphae-engine = { path = "../hyphae/crates/hyphae-engine" }
-hyphae-query = { path = "../hyphae/crates/hyphae-query" }
+hyphae-engine = "=0.1.0"
+hyphae-query = "=0.1.0"
 uuid = { version = "1", features = ["v7"] }
 ```
 

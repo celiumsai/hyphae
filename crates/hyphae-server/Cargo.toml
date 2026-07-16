@@ -7,6 +7,11 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
+readme = "README.md"
+keywords.workspace = true
+categories.workspace = true
+description = "Secure loopback-first HTTP server for the Hyphae data engine."
+documentation = "https://docs.rs/hyphae-server"
 publish.workspace = true
 
 [dependencies]

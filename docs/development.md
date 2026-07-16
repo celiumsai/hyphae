@@ -99,6 +99,6 @@ locked integrity metadata.
 ## Release discipline
 
 Any source or documentation commit invalidates release-candidate closure until
-the complete hosted matrix passes on that exact SHA. Keep the repository
-private and untagged until the release gate is green and publication is
-explicitly authorized. Automation attribution trailers are forbidden.
+the complete hosted matrix passes on that exact SHA. Do not tag or publish a
+new version until the release gate is green and publication is explicitly
+authorized. Automation attribution trailers are forbidden.

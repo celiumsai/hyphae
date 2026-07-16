@@ -1,7 +1,7 @@
 # Security policy
 
-Hyphae is a private pre-release. Do not disclose suspected vulnerabilities in
-public issues, discussions, or chat logs.
+Do not disclose suspected vulnerabilities in public issues, discussions, pull
+requests, or chat logs.
 
 Report a vulnerability through GitHub private vulnerability reporting for
 `celiumsai/hyphae`, or contact `security@celiums.ai` if that channel is not
@@ -10,8 +10,10 @@ impact, and any proposed mitigation.
 
 ## Supported versions
 
-No version is supported until `0.1.0` is released. Security fixes apply only
-to the current private development line.
+| Version | Supported |
+|---|---|
+| `0.1.x` | Yes |
+| `< 0.1.0` | No |
 
 ## Baseline security guarantees
 
@@ -22,6 +24,5 @@ to the current private development line.
 - Result proofs are verifiable offline.
 - External providers are optional and cannot enter the core dependency path.
 
-These guarantees are validated release gates for the private, untagged
-`0.1.0` candidate. Any source change requires the complete gate matrix to pass
-again on the new exact commit.
+These guarantees are validated release gates for `0.1.0`. Any source change
+requires the complete gate matrix to pass again on the new exact commit.

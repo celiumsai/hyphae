@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 64" role="img" aria-labelledby="title">
+  <title id="title">Hyphae reversed</title>
+  <g fill="none" stroke="#8FCBC6" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 10v11c0 6.1 4.9 11 11 11h18c6.1 0 11-4.9 11-11V10"/>
+    <path d="M12 54V43c0-6.1 4.9-11 11-11h18c6.1 0 11 4.9 11 11v11"/>
+  </g>
+  <g fill="#F0EFE7">
+    <circle cx="12" cy="10" r="3"/><circle cx="52" cy="10" r="3"/>
+    <circle cx="12" cy="54" r="3"/><circle cx="52" cy="54" r="3"/>
+    <rect x="28.5" y="28.5" width="7" height="7" rx="1" transform="rotate(45 32 32)"/>
+  </g>
+  <g fill="none" stroke="#F0EFE7" stroke-width="5.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M88 14v36M118 14v36M88 32h30"/>
+    <path d="m136 14 15 18 15-18M151 32v18"/>
+    <path d="M184 50V14h17c18 0 18 18 0 18h-17"/>
+    <path d="M237 14v36M267 14v36M237 32h30"/>
+    <path d="m285 50 15-36 15 36M291 37h18"/>
+    <path d="M333 14v36M333 14h28M333 32h22M333 50h28"/>
+  </g>
+</svg>

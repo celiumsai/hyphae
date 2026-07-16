@@ -1,0 +1,7 @@
+# Hyphae identity assets
+
+These files are the canonical Hyphae lockups used by this repository. They
+are copied from the Hyphae product-site brand source at the release revision.
+
+The source code is licensed under Apache-2.0. The Hyphae name, marks, and
+visual identity remain subject to [`../../TRADEMARKS.md`](../../TRADEMARKS.md).

@@ -8,7 +8,20 @@ For the complete surface-by-surface inventory, see
 [`product/capabilities.md`](product/capabilities.md). For every command and
 option, see [`cli/reference.md`](cli/reference.md).
 
-## Build the binary
+## Install the binary
+
+Install the public release from crates.io:
+
+```bash
+cargo install hyphae-cli --version 0.1.0 --locked
+hyphae version --json
+```
+
+Prebuilt native archives and their checksum, SBOM, signature, and provenance
+bundles are attached to the matching
+[GitHub release](https://github.com/celiumsai/hyphae/releases/latest).
+
+## Build from source
 
 The repository pins its Rust toolchain in `rust-toolchain.toml`.
 

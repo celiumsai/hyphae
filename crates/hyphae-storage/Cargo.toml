@@ -7,6 +7,11 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
+readme = "README.md"
+keywords.workspace = true
+categories.workspace = true
+description = "Append-only durable local storage, recovery, snapshots, and backups for Hyphae."
+documentation = "https://docs.rs/hyphae-storage"
 publish.workspace = true
 
 [dependencies]

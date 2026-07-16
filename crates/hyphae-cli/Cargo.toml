@@ -7,6 +7,11 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
+readme = "README.md"
+keywords.workspace = true
+categories.workspace = true
+description = "Single-binary CLI, server, verifier, and MCP adapter for Hyphae."
+documentation = "https://docs.rs/hyphae-cli"
 publish.workspace = true
 
 [[bin]]
