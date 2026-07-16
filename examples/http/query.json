@@ -1,0 +1,42 @@
+{
+  "filter": {
+    "op": "compare",
+    "path": [
+      "score"
+    ],
+    "operator": "greater_or_equal",
+    "value": 10
+  },
+  "sort": [
+    {
+      "path": [
+        "score"
+      ],
+      "direction": "descending",
+      "nulls": "last"
+    }
+  ],
+  "cursor": null,
+  "limit": 100,
+  "aggregation": {
+    "group_by": [
+      [
+        "group"
+      ]
+    ],
+    "metrics": [
+      {
+        "metric": "count",
+        "name": "records"
+      },
+      {
+        "metric": "sum",
+        "name": "score_total",
+        "path": [
+          "score"
+        ]
+      }
+    ]
+  },
+  "timeout_ms": 5000
+}

@@ -20,7 +20,7 @@ complete hosted matrix passes again on the new exact commit. See
 | 1 | Clean repository, workspace, CI, RustSec, secret scanning, docs | Green baseline on Linux, macOS, and Windows |
 | 2 | Durable local core | Crash recovery, atomic/idempotent writes, snapshots, migrations, checksums, compaction |
 | 3 | Correct query and retrieval | KV, filters, aggregates, stable global merge, budgets, abstention, quality tests |
-| 4 | Verifiable provenance | Offline verification for every returned result and tamper tests |
+| 4 | Verifiable provenance | Mandatory `/v1` proofs, explicit embedded/local proof paths, offline verification, and tamper tests |
 | 5 | Secure `/v1` API | OpenAPI-first compatibility, authentication, limits, loopback default |
 | 6 | Equivalent clients | Rust, TypeScript, Python, CLI, and MCP pass one conformance suite |
 | 7 | Optional adapters | PliegoRS, Astro, Next, and Vite adapters use only public contracts |

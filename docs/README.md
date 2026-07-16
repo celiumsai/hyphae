@@ -1,0 +1,88 @@
+# Hyphae documentation
+
+This directory is the canonical human documentation for Hyphae `0.1.0`.
+Public wire behavior is normative in `contracts/`; durable encodings and
+reference semantics are normative in the versioned specification documents
+linked below. Tests and checked-in compatibility fixtures enforce both.
+
+## Start here
+
+- [Product capabilities and limits](product/capabilities.md)
+- [Local quickstart](quickstart.md)
+- [CLI reference](cli/reference.md)
+- [Configuration reference](configuration.md)
+- [Data model](concepts/data-model.md)
+- [Architecture overview](architecture/overview.md)
+
+## Build and embed
+
+- [Embed Hyphae in Rust](embedding/rust.md)
+- [HTTP API v1](api/v1.md)
+- [Stable API error codes](api/error-codes-v1.md)
+- [Public clients](clients/v1.md)
+- [Optional framework adapters](integrations/optional-adapters.md)
+- [MCP adapter](../mcp/README.md)
+- [Executable examples](../examples/README.md)
+
+## Operate safely
+
+- [Install, upgrade, and migrate](operations/install-upgrade.md)
+- [Back up and restore](operations/backup-restore.md)
+- [Run doctor and diagnose recovery](operations/doctor.md)
+- [Troubleshoot common failures](operations/troubleshooting.md)
+- [Verify a release](release/verification.md)
+- [Compatibility and versioning](compatibility/versioning.md)
+
+## Understand correctness
+
+- [Structured query semantics v1](query/reference-semantics-v1.md)
+- [Exact retrieval semantics v1](retrieval/reference-semantics-v1.md)
+- [Result proof format v1](provenance/result-proof-v1.md)
+- [Baseline threat model](security/threat-model.md)
+- [Server threat model](security/server-threat-model.md)
+
+### Durable formats
+
+- [Data directory and architecture](architecture/overview.md#data-directory)
+- [Log format v1](storage/log-format-v1.md)
+- [Mutation format v1](storage/mutation-format-v1.md)
+- [Document format v1](storage/document-format-v1.md)
+- [Snapshot format v1](storage/snapshot-format-v1.md)
+- [Manifest format v1](storage/manifest-format-v1.md)
+- [Compaction protocol v1](storage/compaction-v1.md)
+
+## Decisions and governance
+
+- [Roadmap](roadmap.md)
+- [Porting ledger](porting/ledger.md)
+- [Development guide](development.md)
+- [0.1.0 release gate](gates/0.1.0.md)
+- Phase evidence: [2](gates/phase-2.md), [3](gates/phase-3.md),
+  [4](gates/phase-4.md), [5](gates/phase-5.md), [6](gates/phase-6.md),
+  [7](gates/phase-7.md), and [8](gates/phase-8.md)
+
+### Architecture decision records
+
+- [ADR template](adr/0000-template.md)
+- [ADR-0001: Product boundary](adr/0001-product-boundary.md)
+- [ADR-0002: License and porting](adr/0002-license-and-porting.md)
+- [ADR-0003: Public contracts](adr/0003-public-contracts.md)
+- [ADR-0004: Durable authority](adr/0004-durable-authority.md)
+- [ADR-0005: Workspace boundaries](adr/0005-workspace-boundaries.md)
+- [ADR-0006: One binary and one data directory](adr/0006-one-binary-one-data-directory.md)
+- [ADR-0007: Query and retrieval correctness](adr/0007-query-retrieval-correctness.md)
+- [ADR-0008: Snapshot-witness result proofs](adr/0008-snapshot-witness-result-proofs.md)
+- [ADR-0009: Secure loopback-first API](adr/0009-loopback-first-secure-v1-api.md)
+- [ADR-0010: Generated clients and MCP stdio](adr/0010-generated-clients-and-mcp-stdio.md)
+- [ADR-0011: Optional host-owned integrations](adr/0011-optional-host-owned-integrations.md)
+- [ADR-0012: Portable recovery and verifiable releases](adr/0012-portable-recovery-and-verifiable-releases.md)
+
+## Documentation contract
+
+Repository documentation is written in English and must describe shipped
+behavior, not intent. `python tools/check_documentation.py --binary
+target/debug/hyphae` verifies local links, this index, JSON examples, and the
+top-level CLI command inventory. `python tools/run_documentation_examples.py
+--binary target/debug/hyphae` executes the maintained HTTP examples. Public
+behavior changes must update the relevant contract, guide, example, and gate
+evidence in the same change.

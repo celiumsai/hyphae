@@ -164,6 +164,11 @@ jobs:
           python-version: 3.11.15
       - name: Build the standalone binary
         run: cargo build -p hyphae-cli --locked
+      - name: Validate documentation and executable embedded example
+        run: |
+          python tools/check_documentation.py --binary target/debug/hyphae
+          python tools/run_documentation_examples.py --binary target/debug/hyphae
+          cargo run -p hyphae-engine --example embedded --locked -- "$RUNNER_TEMP/hyphae-doc-example"
       - name: Verify historical disk fixtures are reproducible
         run: python tools/generate_compatibility_fixture.py --binary target/debug/hyphae --check compatibility/v1/data-directory.json
       - name: Test deterministic packaging and checksums

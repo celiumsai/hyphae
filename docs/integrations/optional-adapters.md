@@ -2,7 +2,7 @@
 
 Hyphae integrations are consumers, never core dependencies. Omit them and the
 host application behaves exactly as before. The packages remain private
-pre-release artifacts until the phase-8 release gate authorizes publication.
+pre-release artifacts until publication is explicitly authorized.
 
 ## PliegoRS boundary
 

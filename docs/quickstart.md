@@ -4,6 +4,10 @@ This quickstart exercises Hyphae as one executable and one owned data
 directory. It does not start or contact a database, cache, cloud service,
 embedding provider, or LLM.
 
+For the complete surface-by-surface inventory, see
+[`product/capabilities.md`](product/capabilities.md). For every command and
+option, see [`cli/reference.md`](cli/reference.md).
+
 ## Build the binary
 
 The repository pins its Rust toolchain in `rust-toolchain.toml`.
@@ -36,7 +40,8 @@ integers. Every command reopens and verifies the same durable directory.
 `put` returns a transaction ID, commit sequence, commit digest, and
 transaction digest. Supplying the same `--transaction-id` with the same
 canonical operation returns `existing`; reusing it for different operations
-fails.
+fails. A plain local `get` returns `proof: null`; add `--proof-out` when the
+result must be portable and independently verifiable.
 
 ## Query without AI
 
@@ -150,3 +155,7 @@ public clients.
 Semantic retrieval already has
 provider-neutral exact reference semantics, but no embedding provider is
 enabled or required.
+
+Continue through the [documentation index](README.md) for embedding, complete
+CLI/configuration references, SDK/MCP guides, durable formats, security, and
+release verification.

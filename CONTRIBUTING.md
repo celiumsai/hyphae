@@ -1,6 +1,7 @@
 # Contributing
 
-Hyphae is private until the `0.1.0` gates are green. Access does not imply
+Hyphae remains private until publication is explicitly authorized after the
+`0.1.0` gates pass on the exact selected commit. Access does not imply
 permission to publish source, artifacts, benchmarks, or design documents.
 
 ## Development rules
@@ -13,17 +14,24 @@ permission to publish source, artifacts, benchmarks, or design documents.
 4. Add a source-ledger entry before porting any historical code or test.
 5. Keep framework adapters and providers outside core crates.
 6. Add tests that prove the invariant, including failure behavior.
+7. Update the documentation index, capability matrix, relevant guide, and
+   executable example whenever shipped behavior changes.
 
 ## Required checks
 
 ```console
-cargo fmt --check
-cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo test --workspace --all-features
-cargo doc --workspace --no-deps
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+cargo test --workspace --all-features --locked
+cargo doc --workspace --all-features --no-deps --locked
+python tools/generate_sdk_models.py --check
+python tools/check_documentation.py --binary target/debug/hyphae
+python tools/run_documentation_examples.py --binary target/debug/hyphae
 cargo deny check
 cargo audit
 ```
 
 Commits must be focused and must not include generated secrets, data
 directories, benchmark corpora, or attribution trailers added by automation.
+See the [development guide](docs/development.md) for contract, durable-format,
+documentation, compatibility, and release procedures.

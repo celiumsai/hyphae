@@ -11,6 +11,6 @@ migrate its disk format without changing the HTTP contract. A breaking wire
 change requires a new API path version. A future disk format is rejected by
 an older binary rather than guessed or downgraded.
 
-The alpha line made no compatibility promise. The 0.1.0 compatibility policy
-becomes active only when every release gate is green on the exact release
-commit.
+No untagged private candidate is a public compatibility release. The `0.1.0`
+policy becomes active only for an explicitly authorized tag whose exact
+commit passes every release gate.

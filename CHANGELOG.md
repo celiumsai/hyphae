@@ -31,3 +31,7 @@ for public APIs after `0.1.0`; on-disk format versions are tracked separately.
 - SPDX/CycloneDX SBOMs, SHA-256 manifests, SLSA v1 build provenance, keyless
   Sigstore signature/attestation bundles, bounded fuzzing, and
   load/kill-restart soak gates.
+- Canonical documentation hub, complete capability/CLI/configuration/data
+  model/embedding/operations references, package-specific SDK and MCP guides,
+  maintained embedded/HTTP/MCP examples, and automated documentation drift
+  validation.
