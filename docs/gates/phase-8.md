@@ -12,6 +12,8 @@ release-commit CI run remain required before phase closure or a `0.1.0` tag.
   preserves idempotency;
 - deterministic Linux/macOS/Windows archives containing one binary;
 - pinned native release matrix for Linux x64, macOS x64/arm64, and Windows x64;
+- installed-archive smoke on every native runner covering the documented
+  offline KV, query, compaction, proof, backup/restore, and doctor flow;
 - SHA-256 manifest, SPDX/CycloneDX SBOMs, SLSA v1 provenance, keyless Cosign
   signature/provenance/SBOM bundles, tag/version enforcement, and
   nonpublishing full manual dry runs;

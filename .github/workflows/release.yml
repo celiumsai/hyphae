@@ -56,6 +56,8 @@ jobs:
         run: cargo build --profile dist -p hyphae-cli --target ${{ matrix.target }} --locked
       - name: Build deterministic release archive
         run: python packaging/package.py --binary "${{ matrix.binary }}" --target "${{ matrix.target }}" --output-dir artifacts
+      - name: Execute the installed native archive offline
+        run: python packaging/verify_install.py --directory artifacts
       - name: Install pinned Cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:

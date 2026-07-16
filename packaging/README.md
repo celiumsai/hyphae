@@ -16,7 +16,9 @@ The release workflow builds native archives for Linux x64, macOS x64/arm64,
 and Windows x64. It emits a SHA-256 checksum file, SPDX JSON and
 CycloneDX JSON SBOMs, Sigstore bundles for every release asset, and GitHub
 Actions SLSA v1 provenance plus SBOM attestations for every native archive
-before creating a release.
+before creating a release. Every package job also extracts its own archive and
+executes the documented offline version, KV, query, compaction, proof,
+backup/restore, and doctor flow from the installed binary.
 
 A manual workflow run executes native build, provenance, SBOM, signing, and
 verification, then uploads a private candidate artifact without publishing a

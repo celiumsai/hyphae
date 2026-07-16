@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 from package import build_archive
@@ -14,6 +15,7 @@ from finalize_release import (
     verify_checksums,
 )
 from provenance import BUILD_TYPE, BUILDER_ID, build_predicate
+from verify_install import extract_archive
 
 
 class PackageTests(unittest.TestCase):
@@ -81,6 +83,15 @@ class PackageTests(unittest.TestCase):
             (root / "unexpected.txt").unlink()
             with self.assertRaisesRegex(RuntimeError, "SHA256SUMS"):
                 validate_release_layout(root, final=True)
+
+    def test_install_extractor_rejects_parent_traversal(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="hyphae-install-extract-") as temporary:
+            root = Path(temporary)
+            archive = root / "host.zip"
+            with zipfile.ZipFile(archive, "w") as bundle:
+                bundle.writestr("../escape", b"forbidden")
+            with self.assertRaisesRegex(RuntimeError, "unsafe archive member"):
+                extract_archive(archive, root / "installed")
 
 
 if __name__ == "__main__":
