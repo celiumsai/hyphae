@@ -102,12 +102,30 @@ def changed_dependency_files(base: str) -> set[str]:
     return {line.strip().replace("\\", "/") for line in result.stdout.splitlines() if line.strip()}
 
 
+def validate_cargo_lock(manifest_path: str | None = None) -> None:
+    command = ["cargo", "metadata", "--locked", "--format-version", "1"]
+    if manifest_path is not None:
+        command.extend(("--manifest-path", manifest_path))
+    result = subprocess.run(
+        command,
+        cwd=ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.strip().splitlines()
+        suffix = f": {detail[-1]}" if detail else ""
+        label = manifest_path or "Cargo.toml"
+        raise ValueError(f"{label} requires an updated Cargo.lock{suffix}")
+
+
 def validate_manifest_lock_pairs(changed: set[str]) -> None:
     rust_manifests = {path for path in changed if path.endswith("Cargo.toml")}
     if any(not path.startswith("fuzz/") for path in rust_manifests) and "Cargo.lock" not in changed:
-        raise ValueError("workspace Cargo.toml changed without Cargo.lock")
+        validate_cargo_lock()
     if "fuzz/Cargo.toml" in changed and "fuzz/Cargo.lock" not in changed:
-        raise ValueError("fuzz/Cargo.toml changed without fuzz/Cargo.lock")
+        validate_cargo_lock("fuzz/Cargo.toml")
     for manifest in (path for path in changed if path.endswith("package.json")):
         lock = str(Path(manifest).with_name("package-lock.json")).replace("\\", "/")
         if lock not in changed:

@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 import unittest
+from unittest.mock import patch
 
 from tools.review_dependencies import (
     cargo_dependencies,
     dependency_diff,
     npm_dependencies,
     python_dependencies,
+    validate_manifest_lock_pairs,
 )
 
 
@@ -49,6 +51,20 @@ class DependencyReviewTests(unittest.TestCase):
         self.assertEqual(result["added"], ["added"])
         self.assertEqual(result["removed"], ["removed"])
         self.assertEqual(result["metadata_changed"], ["same"])
+
+    @patch("tools.review_dependencies.validate_cargo_lock")
+    def test_metadata_only_manifest_change_accepts_current_lock(self, check_lock) -> None:
+        validate_manifest_lock_pairs({"Cargo.toml"})
+        check_lock.assert_called_once_with()
+
+    @patch("tools.review_dependencies.validate_cargo_lock")
+    def test_fuzz_manifest_checks_its_isolated_lock(self, check_lock) -> None:
+        validate_manifest_lock_pairs({"fuzz/Cargo.toml"})
+        check_lock.assert_called_once_with("fuzz/Cargo.toml")
+
+    def test_javascript_manifest_still_requires_its_lock(self) -> None:
+        with self.assertRaisesRegex(ValueError, "package-lock.json"):
+            validate_manifest_lock_pairs({"sdks/typescript/package.json"})
 
 
 if __name__ == "__main__":
