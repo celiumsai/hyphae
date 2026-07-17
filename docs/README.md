@@ -8,6 +8,7 @@ linked below. Tests and checked-in compatibility fixtures enforce both.
 ## Announcements
 
 - [DEV launch article for Hyphae 0.1.0](announcements/devto-hyphae-0.1.0.md)
+  ([published article](https://dev.to/terrizoaguimor/i-built-a-rust-data-engine-that-can-prove-its-own-results-12m7))
 
 ## Start here
 

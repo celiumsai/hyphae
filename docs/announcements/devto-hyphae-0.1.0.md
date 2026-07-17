@@ -8,6 +8,8 @@ That question led me to build **Hyphae**, an open-source data engine in Rust wit
 - deterministic KV and structured queries;
 - portable result proofs that can be verified offline.
 
+If you read my [earlier post about provenance over prediction](https://dev.to/terrizoaguimor/why-im-building-hyphae-provenance-over-prediction-and-the-3-line-baseline-that-tied-it-2e32), this is the next and deliberately narrower step. That work began as a cognitive substrate and clarified the provenance thesis. I have since rebuilt Hyphae as a standalone data engine. The research lineage remains, but the current product does not need an AI stack to be useful.
+
 Hyphae `0.1.0` is now available on [GitHub](https://github.com/celiumsai/hyphae), through crates.io, and as signed multiplatform archives in the [first public release](https://github.com/celiumsai/hyphae/releases/tag/v0.1.0).
 
 ## The problem was not another query syntax
@@ -172,7 +174,7 @@ Hyphae `0.1.0` includes:
 - Linux, macOS, and Windows archives with checksums, SBOMs, signatures, and provenance;
 - documented disk formats, recovery behavior, threat models, ADRs, and release gates.
 
-The source is licensed under Apache-2.0. The current repository is separate from the historical Hyphae Network project; historical sources remain frozen inputs, and only audited pieces with documented provenance may cross that boundary.
+The source is licensed under Apache-2.0. The current repository is separate from historical research prototypes and the Hyphae Network project; historical sources remain frozen inputs, and only audited pieces with documented provenance may cross that boundary.
 
 ## Where I would value feedback
 
