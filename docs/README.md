@@ -5,6 +5,10 @@ Public wire behavior is normative in `contracts/`; durable encodings and
 reference semantics are normative in the versioned specification documents
 linked below. Tests and checked-in compatibility fixtures enforce both.
 
+## Announcements
+
+- [DEV launch article for Hyphae 0.1.0](announcements/devto-hyphae-0.1.0.md)
+
 ## Start here
 
 - [Product capabilities and limits](product/capabilities.md)
