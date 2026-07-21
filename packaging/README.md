@@ -17,7 +17,8 @@ and Windows x64. It emits a SHA-256 checksum file, SPDX JSON and
 CycloneDX JSON SBOMs, Sigstore bundles for every release asset, and GitHub
 Actions SLSA v1 provenance plus SBOM attestations for every native archive
 before creating a release. Every package job also extracts its own archive and
-executes the documented offline version, KV, query, compaction, proof,
+executes the documented offline version, KV, query, compaction, result proof,
+durable vector/lexical/hybrid retrieval, retrieval-proof verification,
 backup/restore, and doctor flow from the installed binary.
 
 A manual workflow run executes native build, provenance, SBOM, signing, and

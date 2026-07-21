@@ -18,5 +18,6 @@ Thumbs.db
 **/.astro/
 **/.next/
 /artifacts/
+/artifacts-local-*/
 /coverage/
 /.hyphae/

@@ -4,14 +4,18 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import shutil
+import socket
 import stat
 import subprocess
 import tarfile
 import tempfile
+import time
 import tomllib
+import urllib.request
 import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -75,6 +79,160 @@ def workspace_version() -> str:
     return manifest["workspace"]["package"]["version"]
 
 
+def write_json(path: Path, value: Any) -> None:
+    path.write_text(json.dumps(value, sort_keys=True), encoding="utf-8", newline="\n")
+
+
+def reserve_loopback_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.bind(("127.0.0.1", 0))
+        return int(listener.getsockname()[1])
+
+
+def wait_until_live(base_url: str, process: subprocess.Popen[bytes]) -> None:
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise RuntimeError(f"installed server exited early with status {process.returncode}")
+        try:
+            with urllib.request.urlopen(f"{base_url}/v1/health/live", timeout=1) as response:
+                if response.status == 200:
+                    return
+        except OSError:
+            time.sleep(0.1)
+    raise RuntimeError("installed server did not become live")
+
+
+def exercise_retrieval(
+    binary: Path,
+    live: Path,
+    root: Path,
+    environment: dict[str, str],
+) -> None:
+    port = reserve_loopback_port()
+    base_url = f"http://127.0.0.1:{port}"
+    process = subprocess.Popen(
+        (str(binary), "serve", "--data-dir", str(live), "--bind", f"127.0.0.1:{port}"),
+        env=environment,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        wait_until_live(base_url, process)
+        requests = {
+            "vector-space": {
+                "vector_space": {
+                    "name": "semantic",
+                    "dimension": 2,
+                    "metric": "cosine_q15_nanos",
+                }
+            },
+            "vectors": {
+                "vector_space": "semantic",
+                "vectors": [
+                    {"key_hex": "616c706861", "values": [32767, 0]},
+                    {"key_hex": "62657461", "values": [0, 32767]},
+                ],
+            },
+            "lexical-index": {
+                "lexical_index": {
+                    "name": "content",
+                    "fields": [
+                        {"path": ["title"], "weight_micros": 2_000_000},
+                        {"path": ["body"], "weight_micros": 1_000_000},
+                    ],
+                }
+            },
+            "exact": {
+                "vector_space": "semantic",
+                "query": [32767, 0],
+                "limit": 2,
+                "minimum_score_nanos": -1_000_000_000,
+                "minimum_margin_nanos": 0,
+                "timeout_ms": 5000,
+            },
+            "lexical": {
+                "lexical_index": "content",
+                "query": "durable memory",
+                "limit": 2,
+                "timeout_ms": 5000,
+            },
+        }
+        requests["hybrid"] = {
+            "lexical": requests["lexical"],
+            "vector": requests["exact"],
+            "lexical_weight": 1,
+            "vector_weight": 1,
+            "limit": 2,
+        }
+        request_paths: dict[str, Path] = {}
+        for name, value in requests.items():
+            path = root / f"{name}.json"
+            write_json(path, value)
+            request_paths[name] = path
+
+        remote = ["remote", "--base-url", base_url]
+        for command, request_name in (
+            ("define-vector-space", "vector-space"),
+            ("put-vectors", "vectors"),
+            ("define-lexical-index", "lexical-index"),
+        ):
+            run_json(
+                binary,
+                [*remote, command, "--request", str(request_paths[request_name])],
+                environment,
+            )
+
+        for kind in ("exact", "lexical", "hybrid"):
+            response = run_json(
+                binary,
+                [*remote, f"retrieve-{kind}", "--request", str(request_paths[kind])],
+                environment,
+            )
+            proof = response.get("proof")
+            if not isinstance(proof, dict) or "data" not in proof or "anchor_digest" not in proof:
+                raise RuntimeError(f"installed {kind} retrieval omitted its proof")
+            proof_json = root / f"{kind}-proof.json"
+            write_json(proof_json, proof)
+            proof_file = root / f"{kind}.hyrproof"
+            proof_file.write_bytes(base64.b64decode(str(proof["data"]), validate=True))
+            witness = root / f"{kind}.hysnap"
+            run_json(
+                binary,
+                [
+                    *remote,
+                    "witness",
+                    "--proof",
+                    str(proof_json),
+                    "--out",
+                    str(witness),
+                ],
+                environment,
+            )
+            run_json(
+                binary,
+                [
+                    "verify-retrieval",
+                    "--kind",
+                    kind,
+                    "--proof",
+                    str(proof_file),
+                    "--snapshot",
+                    str(witness),
+                    "--anchor",
+                    str(proof["anchor_digest"]),
+                ],
+                environment,
+            )
+    finally:
+        process.terminate()
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=10)
+
+
 def verify_install(directory: Path) -> dict[str, Any]:
     archives = sorted(
         path
@@ -105,17 +263,29 @@ def verify_install(directory: Path) -> dict[str, Any]:
         expected_version = workspace_version()
         expected = {
             "api_version": "v1",
-            "disk_format_version": 1,
+            "disk_format_version": 2,
             "engine_version": expected_version,
             "product": "hyphae",
         }
         if version != expected:
             raise RuntimeError(f"installed version mismatch: {version!r}")
 
-        run_json(binary, ["put", "--key", "alpha", "--json", '{"group":"x","score":10}'], environment)
-        run_json(binary, ["put", "--key", "beta", "--json", '{"group":"x","score":20}'], environment)
+        alpha = {
+            "body": "offline agent memory",
+            "group": "x",
+            "score": 10,
+            "title": "Durable memory",
+        }
+        beta = {
+            "body": "exact vector retrieval",
+            "group": "x",
+            "score": 20,
+            "title": "Fast search",
+        }
+        run_json(binary, ["put", "--key", "alpha", "--json", json.dumps(alpha)], environment)
+        run_json(binary, ["put", "--key", "beta", "--json", json.dumps(beta)], environment)
         read = run_json(binary, ["get", "--key", "alpha"], environment)
-        if read.get("record", {}).get("value") != {"group": "x", "score": 10}:
+        if read.get("record", {}).get("value") != alpha:
             raise RuntimeError("installed binary returned the wrong durable value")
         query = run_json(
             binary,
@@ -124,6 +294,8 @@ def verify_install(directory: Path) -> dict[str, Any]:
         )
         if [row["key_hex"] for row in query.get("rows", [])] != ["616c706861", "62657461"]:
             raise RuntimeError("installed binary returned the wrong global query order")
+
+        exercise_retrieval(binary, live, root, environment)
         run_json(binary, ["snapshot"], environment)
         run_json(binary, ["compact"], environment)
 
@@ -161,7 +333,7 @@ def verify_install(directory: Path) -> dict[str, Any]:
         restored_value = run_json(
             binary, ["get", "--data-dir", str(restored), "--key", "alpha"], environment
         )
-        if restored_value.get("record", {}).get("value") != {"group": "x", "score": 10}:
+        if restored_value.get("record", {}).get("value") != alpha:
             raise RuntimeError("installed restore did not preserve the durable value")
         return {
             "archive": archive.name,

@@ -1,0 +1,97 @@
+{
+  "base": "51ab2bc73ac6e93664bf455c5ebeb5993482baa9",
+  "changed_dependency_files": [],
+  "ecosystems": {
+    "Cargo.lock": {
+      "added": [
+        "libm@0.2.16|registry+https://github.com/rust-lang/crates.io-index",
+        "unicode-casefold@0.2.0|registry+https://github.com/rust-lang/crates.io-index",
+        "unicode-normalization@0.1.25|registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      "metadata_changed": [],
+      "removed": []
+    },
+    "fuzz/Cargo.lock": {
+      "added": [
+        "bitflags@2.13.1|registry+https://github.com/rust-lang/crates.io-index",
+        "cc@1.3.0|registry+https://github.com/rust-lang/crates.io-index",
+        "futures-core@0.3.33|registry+https://github.com/rust-lang/crates.io-index",
+        "futures-task@0.3.33|registry+https://github.com/rust-lang/crates.io-index",
+        "futures-util@0.3.33|registry+https://github.com/rust-lang/crates.io-index",
+        "libc@0.2.187|registry+https://github.com/rust-lang/crates.io-index",
+        "libm@0.2.16|registry+https://github.com/rust-lang/crates.io-index",
+        "proc-macro2@1.0.107|registry+https://github.com/rust-lang/crates.io-index",
+        "quote@1.0.47|registry+https://github.com/rust-lang/crates.io-index",
+        "serde@1.0.229|registry+https://github.com/rust-lang/crates.io-index",
+        "serde_core@1.0.229|registry+https://github.com/rust-lang/crates.io-index",
+        "serde_derive@1.0.229|registry+https://github.com/rust-lang/crates.io-index",
+        "serde_json@1.0.151|registry+https://github.com/rust-lang/crates.io-index",
+        "syn@3.0.2|registry+https://github.com/rust-lang/crates.io-index",
+        "thiserror-impl@2.0.19|registry+https://github.com/rust-lang/crates.io-index",
+        "thiserror@2.0.19|registry+https://github.com/rust-lang/crates.io-index",
+        "tinyvec@1.12.0|registry+https://github.com/rust-lang/crates.io-index",
+        "tinyvec_macros@0.1.1|registry+https://github.com/rust-lang/crates.io-index",
+        "unicode-casefold@0.2.0|registry+https://github.com/rust-lang/crates.io-index",
+        "unicode-normalization@0.1.25|registry+https://github.com/rust-lang/crates.io-index",
+        "uuid@1.24.0|registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      "metadata_changed": [],
+      "removed": [
+        "bitflags@2.13.0|registry+https://github.com/rust-lang/crates.io-index",
+        "cc@1.2.67|registry+https://github.com/rust-lang/crates.io-index",
+        "futures-core@0.3.32|registry+https://github.com/rust-lang/crates.io-index",
+        "futures-task@0.3.32|registry+https://github.com/rust-lang/crates.io-index",
+        "futures-util@0.3.32|registry+https://github.com/rust-lang/crates.io-index",
+        "libc@0.2.186|registry+https://github.com/rust-lang/crates.io-index",
+        "proc-macro2@1.0.106|registry+https://github.com/rust-lang/crates.io-index",
+        "quote@1.0.46|registry+https://github.com/rust-lang/crates.io-index",
+        "serde@1.0.228|registry+https://github.com/rust-lang/crates.io-index",
+        "serde_core@1.0.228|registry+https://github.com/rust-lang/crates.io-index",
+        "serde_derive@1.0.228|registry+https://github.com/rust-lang/crates.io-index",
+        "serde_json@1.0.150|registry+https://github.com/rust-lang/crates.io-index",
+        "thiserror-impl@2.0.18|registry+https://github.com/rust-lang/crates.io-index",
+        "thiserror@2.0.18|registry+https://github.com/rust-lang/crates.io-index",
+        "uuid@1.23.5|registry+https://github.com/rust-lang/crates.io-index"
+      ]
+    },
+    "integrations/host-smoke/package-lock.json": {
+      "added": [
+        "astro@7.1.3|node_modules/astro",
+        "cookie@2.0.1|node_modules/cookie",
+        "neotraverse@1.0.1|node_modules/neotraverse"
+      ],
+      "metadata_changed": [],
+      "removed": [
+        "astro@7.0.9|node_modules/astro",
+        "cookie@1.1.1|node_modules/cookie",
+        "neotraverse@0.6.18|node_modules/neotraverse"
+      ]
+    },
+    "integrations/javascript/package-lock.json": {
+      "added": [
+        "astro@7.1.3|node_modules/astro",
+        "cookie@2.0.1|node_modules/cookie",
+        "neotraverse@1.0.1|node_modules/neotraverse"
+      ],
+      "metadata_changed": [],
+      "removed": [
+        "astro@7.0.9|node_modules/astro",
+        "cookie@1.1.1|node_modules/cookie",
+        "neotraverse@0.6.18|node_modules/neotraverse"
+      ]
+    },
+    "sdks/python/pyproject.toml": {
+      "added": [],
+      "metadata_changed": [],
+      "removed": []
+    },
+    "sdks/typescript/package-lock.json": {
+      "added": [],
+      "metadata_changed": [],
+      "removed": []
+    }
+  },
+  "head": "51ab2bc73ac6e93664bf455c5ebeb5993482baa9",
+  "status": "ok",
+  "version": 1
+}

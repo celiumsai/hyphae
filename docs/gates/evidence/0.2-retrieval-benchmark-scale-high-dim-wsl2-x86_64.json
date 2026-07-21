@@ -1,0 +1,302 @@
+{
+  "disk_format_version": 2,
+  "engine_version": "0.2.0",
+  "environment": {
+    "cargo": "cargo 1.96.0 (30a34c682 2026-05-25)",
+    "machine": "x86_64",
+    "platform": "Linux-6.18.33.1-microsoft-standard-WSL2-x86_64-with-glibc2.41",
+    "python": "3.13.5",
+    "rustc": "rustc 1.96.0 (ac68faa20 2026-05-25)"
+  },
+  "iterations": 7,
+  "process": {
+    "peak_rss_bytes": 54136832,
+    "wall_seconds": 260.625916
+  },
+  "scenarios": [
+    {
+      "ingest": {
+        "record_ingest_nanos": 5293640844,
+        "records": 100000,
+        "records_per_second": 18890,
+        "vector_ingest_nanos": 2098732074,
+        "vectors": 100000,
+        "vectors_per_second": 47647
+      },
+      "lifecycle_nanos": {
+        "backup": 877156492,
+        "compaction": 330052513,
+        "compaction_generation": 2,
+        "delete_record": 356317,
+        "delete_vector": 73058,
+        "initial_write": 7395067003,
+        "open_restored": 371526142,
+        "rebuild_from_authority": 4790299847,
+        "rebuild_replayed_transactions": 784,
+        "reopen_after_compaction": 254592604,
+        "reopen_caught_up": 577857100,
+        "reopen_replayed_transactions": 0,
+        "restore": 4209428542,
+        "snapshot": 318606882,
+        "update_record": 10490190,
+        "update_vector": 121554
+      },
+      "parameters": {
+        "corpus_size": 100000,
+        "dataset": "deterministic_synthetic_mixed_document_vector_v1",
+        "dimensions": 384,
+        "empty_space_covered_by_unit_fixture": true,
+        "lexical_corpus": true,
+        "mixed_document_vector_workload": true,
+        "near_ties_covered_by_compatibility_fixture": true,
+        "sparse_space_covered_by_unit_fixture": true,
+        "top_k": 10,
+        "updates_and_deletes_exercised": true
+      },
+      "proof_bytes": {
+        "exact": 1169,
+        "hybrid": 3923,
+        "lexical": 2187
+      },
+      "proof_generation_nanos": {
+        "exact": {
+          "maximum": 623000779,
+          "mean": 572370000,
+          "minimum": 534881727,
+          "p50": 561554984,
+          "p95": 623000779,
+          "p99": 623000779
+        },
+        "hybrid": {
+          "maximum": 1294834972,
+          "mean": 1202178219,
+          "minimum": 1054374723,
+          "p50": 1216861860,
+          "p95": 1294834972,
+          "p99": 1294834972
+        },
+        "lexical": {
+          "maximum": 806524329,
+          "mean": 789675282,
+          "minimum": 775070700,
+          "p50": 791219967,
+          "p95": 806524329,
+          "p99": 806524329
+        }
+      },
+      "proof_verification_nanos": {
+        "exact": {
+          "maximum": 1529935126,
+          "mean": 1097685746,
+          "minimum": 932903386,
+          "p50": 960725617,
+          "p95": 1529935126,
+          "p99": 1529935126
+        },
+        "hybrid": {
+          "maximum": 1495839872,
+          "mean": 1442810376,
+          "minimum": 1416999357,
+          "p50": 1436879501,
+          "p95": 1495839872,
+          "p99": 1495839872
+        },
+        "lexical": {
+          "maximum": 2590716428,
+          "mean": 2341335284,
+          "minimum": 2176575562,
+          "p50": 2366308110,
+          "p95": 2590716428,
+          "p99": 2590716428
+        }
+      },
+      "quality": {
+        "exact_recall_at_k_micros": 1000000,
+        "exact_reference": "exhaustive canonical scorer over every durable candidate",
+        "hybrid_matches_reference": true,
+        "hybrid_reference": "hyphae deterministic RRF reference executor",
+        "lexical_matches_reference": true,
+        "lexical_reference": "hyphae BM25F reference executor"
+      },
+      "retrieval_latency_nanos": {
+        "exact": {
+          "maximum": 265538280,
+          "mean": 242281725,
+          "minimum": 227218711,
+          "p50": 239446282,
+          "p95": 265538280,
+          "p99": 265538280
+        },
+        "hybrid": {
+          "maximum": 822690961,
+          "mean": 731109654,
+          "minimum": 667341030,
+          "p50": 718017757,
+          "p95": 822690961,
+          "p99": 822690961
+        },
+        "lexical": {
+          "maximum": 569143664,
+          "mean": 487541663,
+          "minimum": 426503106,
+          "p50": 478635901,
+          "p95": 569143664,
+          "p99": 569143664
+        }
+      },
+      "storage": {
+        "backup_bytes": 99515198,
+        "backup_snapshot_bytes": 99514694,
+        "data_bytes_after_compaction": 418286195,
+        "data_bytes_before_snapshot": 688513152,
+        "logical_payload_bytes": 96745520,
+        "restored_snapshot_bytes": 99514694,
+        "snapshot_bytes": 99514694,
+        "write_amplification_micros": 7116744
+      }
+    },
+    {
+      "ingest": {
+        "record_ingest_nanos": 2939556093,
+        "records": 100000,
+        "records_per_second": 34018,
+        "vector_ingest_nanos": 1925741932,
+        "vectors": 100000,
+        "vectors_per_second": 51928
+      },
+      "lifecycle_nanos": {
+        "backup": 2161726515,
+        "compaction": 917608771,
+        "compaction_generation": 2,
+        "delete_record": 353968,
+        "delete_vector": 81671,
+        "initial_write": 4865787767,
+        "open_restored": 846621710,
+        "rebuild_from_authority": 3290280115,
+        "rebuild_replayed_transactions": 784,
+        "reopen_after_compaction": 493916026,
+        "reopen_caught_up": 447902418,
+        "reopen_replayed_transactions": 0,
+        "restore": 9437939639,
+        "snapshot": 966611949,
+        "update_record": 24063864,
+        "update_vector": 153513
+      },
+      "parameters": {
+        "corpus_size": 100000,
+        "dataset": "deterministic_synthetic_mixed_document_vector_v1",
+        "dimensions": 768,
+        "empty_space_covered_by_unit_fixture": true,
+        "lexical_corpus": true,
+        "mixed_document_vector_workload": true,
+        "near_ties_covered_by_compatibility_fixture": true,
+        "sparse_space_covered_by_unit_fixture": true,
+        "top_k": 10,
+        "updates_and_deletes_exercised": true
+      },
+      "proof_bytes": {
+        "exact": 1937,
+        "hybrid": 4691,
+        "lexical": 2187
+      },
+      "proof_generation_nanos": {
+        "exact": {
+          "maximum": 1544606075,
+          "mean": 1111504827,
+          "minimum": 825364041,
+          "p50": 1115002860,
+          "p95": 1544606075,
+          "p99": 1544606075
+        },
+        "hybrid": {
+          "maximum": 2356633199,
+          "mean": 1778995587,
+          "minimum": 1571307311,
+          "p50": 1707800080,
+          "p95": 2356633199,
+          "p99": 2356633199
+        },
+        "lexical": {
+          "maximum": 1519999094,
+          "mean": 1379195894,
+          "minimum": 1284543809,
+          "p50": 1342614123,
+          "p95": 1519999094,
+          "p99": 1519999094
+        }
+      },
+      "proof_verification_nanos": {
+        "exact": {
+          "maximum": 3272415020,
+          "mean": 2565423916,
+          "minimum": 1623959190,
+          "p50": 2647078434,
+          "p95": 3272415020,
+          "p99": 3272415020
+        },
+        "hybrid": {
+          "maximum": 3860854016,
+          "mean": 3604827344,
+          "minimum": 3354028004,
+          "p50": 3589221826,
+          "p95": 3860854016,
+          "p99": 3860854016
+        },
+        "lexical": {
+          "maximum": 3621961189,
+          "mean": 3273834126,
+          "minimum": 2934878233,
+          "p50": 3304412696,
+          "p95": 3621961189,
+          "p99": 3621961189
+        }
+      },
+      "quality": {
+        "exact_recall_at_k_micros": 1000000,
+        "exact_reference": "exhaustive canonical scorer over every durable candidate",
+        "hybrid_matches_reference": true,
+        "hybrid_reference": "hyphae deterministic RRF reference executor",
+        "lexical_matches_reference": true,
+        "lexical_reference": "hyphae BM25F reference executor"
+      },
+      "retrieval_latency_nanos": {
+        "exact": {
+          "maximum": 376084737,
+          "mean": 355561061,
+          "minimum": 340836765,
+          "p50": 354419067,
+          "p95": 376084737,
+          "p99": 376084737
+        },
+        "hybrid": {
+          "maximum": 997268249,
+          "mean": 966211102,
+          "minimum": 940978726,
+          "p50": 960987818,
+          "p95": 997268249,
+          "p99": 997268249
+        },
+        "lexical": {
+          "maximum": 642417937,
+          "mean": 586889357,
+          "minimum": 546485108,
+          "p50": 579596134,
+          "p95": 642417937,
+          "p99": 642417937
+        }
+      },
+      "storage": {
+        "backup_bytes": 176315199,
+        "backup_snapshot_bytes": 176314694,
+        "data_bytes_after_compaction": 801663603,
+        "data_bytes_before_snapshot": 765313152,
+        "logical_payload_bytes": 173545520,
+        "restored_snapshot_bytes": 176314694,
+        "snapshot_bytes": 176314694,
+        "write_amplification_micros": 4409869
+      }
+    }
+  ],
+  "schema": "hyphae-retrieval-benchmark-v2",
+  "timing_clock": "std::time::Instant"
+}

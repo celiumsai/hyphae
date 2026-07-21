@@ -1,0 +1,443 @@
+{
+  "disk_format_version": 2,
+  "engine_version": "0.2.0",
+  "environment": {
+    "cargo": "cargo 1.96.0 (30a34c682 2026-05-25)",
+    "machine": "x86_64",
+    "platform": "Linux-6.18.33.1-microsoft-standard-WSL2-x86_64-with-glibc2.41",
+    "python": "3.13.5",
+    "rustc": "rustc 1.96.0 (ac68faa20 2026-05-25)"
+  },
+  "iterations": 7,
+  "process": {
+    "peak_rss_bytes": 54280192,
+    "wall_seconds": 40.026223
+  },
+  "scenarios": [
+    {
+      "ingest": {
+        "record_ingest_nanos": 370622751,
+        "records": 10000,
+        "records_per_second": 26981,
+        "vector_ingest_nanos": 103791465,
+        "vectors": 10000,
+        "vectors_per_second": 96347
+      },
+      "lifecycle_nanos": {
+        "backup": 118558246,
+        "compaction": 41402757,
+        "compaction_generation": 2,
+        "delete_record": 203891,
+        "delete_vector": 63927,
+        "initial_write": 475461378,
+        "open_restored": 30145358,
+        "rebuild_from_authority": 646465261,
+        "rebuild_replayed_transactions": 82,
+        "reopen_after_compaction": 34034017,
+        "reopen_caught_up": 46800250,
+        "reopen_replayed_transactions": 0,
+        "restore": 514702916,
+        "snapshot": 41725879,
+        "update_record": 1433284,
+        "update_vector": 92258
+      },
+      "parameters": {
+        "corpus_size": 10000,
+        "dataset": "deterministic_synthetic_mixed_document_vector_v1",
+        "dimensions": 128,
+        "empty_space_covered_by_unit_fixture": true,
+        "lexical_corpus": true,
+        "mixed_document_vector_workload": true,
+        "near_ties_covered_by_compatibility_fixture": true,
+        "sparse_space_covered_by_unit_fixture": true,
+        "top_k": 10,
+        "updates_and_deletes_exercised": true
+      },
+      "proof_bytes": {
+        "exact": 657,
+        "hybrid": 3411,
+        "lexical": 2187
+      },
+      "proof_generation_nanos": {
+        "exact": {
+          "maximum": 100731672,
+          "mean": 87295535,
+          "minimum": 77993522,
+          "p50": 82195237,
+          "p95": 100731672,
+          "p99": 100731672
+        },
+        "hybrid": {
+          "maximum": 232520735,
+          "mean": 182392416,
+          "minimum": 126657743,
+          "p50": 168934992,
+          "p95": 232520735,
+          "p99": 232520735
+        },
+        "lexical": {
+          "maximum": 201837933,
+          "mean": 171385034,
+          "minimum": 142004020,
+          "p50": 175676681,
+          "p95": 201837933,
+          "p99": 201837933
+        }
+      },
+      "proof_verification_nanos": {
+        "exact": {
+          "maximum": 150055482,
+          "mean": 128585612,
+          "minimum": 116905469,
+          "p50": 124772891,
+          "p95": 150055482,
+          "p99": 150055482
+        },
+        "hybrid": {
+          "maximum": 200395298,
+          "mean": 191510262,
+          "minimum": 182975048,
+          "p50": 188697648,
+          "p95": 200395298,
+          "p99": 200395298
+        },
+        "lexical": {
+          "maximum": 194215698,
+          "mean": 181231588,
+          "minimum": 167933009,
+          "p50": 180683901,
+          "p95": 194215698,
+          "p99": 194215698
+        }
+      },
+      "quality": {
+        "exact_recall_at_k_micros": 1000000,
+        "exact_reference": "exhaustive canonical scorer over every durable candidate",
+        "hybrid_matches_reference": true,
+        "hybrid_reference": "hyphae deterministic RRF reference executor",
+        "lexical_matches_reference": true,
+        "lexical_reference": "hyphae BM25F reference executor"
+      },
+      "retrieval_latency_nanos": {
+        "exact": {
+          "maximum": 31144742,
+          "mean": 24296041,
+          "minimum": 19822712,
+          "p50": 22887746,
+          "p95": 31144742,
+          "p99": 31144742
+        },
+        "hybrid": {
+          "maximum": 161652088,
+          "mean": 125226712,
+          "minimum": 103998241,
+          "p50": 113920159,
+          "p95": 161652088,
+          "p99": 161652088
+        },
+        "lexical": {
+          "maximum": 102459975,
+          "mean": 83234293,
+          "minimum": 70251868,
+          "p50": 83354290,
+          "p95": 102459975,
+          "p99": 102459975
+        }
+      },
+      "storage": {
+        "backup_bytes": 4812447,
+        "backup_snapshot_bytes": 4811948,
+        "data_bytes_after_compaction": 24739289,
+        "data_bytes_before_snapshot": 42482790,
+        "logical_payload_bytes": 4534550,
+        "restored_snapshot_bytes": 4811948,
+        "snapshot_bytes": 4811948,
+        "write_amplification_micros": 9368689
+      }
+    },
+    {
+      "ingest": {
+        "record_ingest_nanos": 330447693,
+        "records": 10000,
+        "records_per_second": 30261,
+        "vector_ingest_nanos": 115069018,
+        "vectors": 10000,
+        "vectors_per_second": 86904
+      },
+      "lifecycle_nanos": {
+        "backup": 139379437,
+        "compaction": 50770184,
+        "compaction_generation": 2,
+        "delete_record": 201441,
+        "delete_vector": 64912,
+        "initial_write": 446067409,
+        "open_restored": 38984794,
+        "rebuild_from_authority": 406632115,
+        "rebuild_replayed_transactions": 82,
+        "reopen_after_compaction": 41787106,
+        "reopen_caught_up": 51461278,
+        "reopen_replayed_transactions": 0,
+        "restore": 578028448,
+        "snapshot": 56943340,
+        "update_record": 1178070,
+        "update_vector": 106920
+      },
+      "parameters": {
+        "corpus_size": 10000,
+        "dataset": "deterministic_synthetic_mixed_document_vector_v1",
+        "dimensions": 384,
+        "empty_space_covered_by_unit_fixture": true,
+        "lexical_corpus": true,
+        "mixed_document_vector_workload": true,
+        "near_ties_covered_by_compatibility_fixture": true,
+        "sparse_space_covered_by_unit_fixture": true,
+        "top_k": 10,
+        "updates_and_deletes_exercised": true
+      },
+      "proof_bytes": {
+        "exact": 1169,
+        "hybrid": 3923,
+        "lexical": 2187
+      },
+      "proof_generation_nanos": {
+        "exact": {
+          "maximum": 102134182,
+          "mean": 90174869,
+          "minimum": 81389141,
+          "p50": 90659417,
+          "p95": 102134182,
+          "p99": 102134182
+        },
+        "hybrid": {
+          "maximum": 170636505,
+          "mean": 146710477,
+          "minimum": 139215632,
+          "p50": 143428541,
+          "p95": 170636505,
+          "p99": 170636505
+        },
+        "lexical": {
+          "maximum": 323137596,
+          "mean": 161795559,
+          "minimum": 106358570,
+          "p50": 111627326,
+          "p95": 323137596,
+          "p99": 323137596
+        }
+      },
+      "proof_verification_nanos": {
+        "exact": {
+          "maximum": 185195159,
+          "mean": 158536484,
+          "minimum": 146937476,
+          "p50": 153820133,
+          "p95": 185195159,
+          "p99": 185195159
+        },
+        "hybrid": {
+          "maximum": 232862347,
+          "mean": 221454701,
+          "minimum": 213736713,
+          "p50": 220352401,
+          "p95": 232862347,
+          "p99": 232862347
+        },
+        "lexical": {
+          "maximum": 206557726,
+          "mean": 199596784,
+          "minimum": 193546530,
+          "p50": 199446333,
+          "p95": 206557726,
+          "p99": 206557726
+        }
+      },
+      "quality": {
+        "exact_recall_at_k_micros": 1000000,
+        "exact_reference": "exhaustive canonical scorer over every durable candidate",
+        "hybrid_matches_reference": true,
+        "hybrid_reference": "hyphae deterministic RRF reference executor",
+        "lexical_matches_reference": true,
+        "lexical_reference": "hyphae BM25F reference executor"
+      },
+      "retrieval_latency_nanos": {
+        "exact": {
+          "maximum": 29588432,
+          "mean": 28914930,
+          "minimum": 27514397,
+          "p50": 29197102,
+          "p95": 29588432,
+          "p99": 29588432
+        },
+        "hybrid": {
+          "maximum": 108936277,
+          "mean": 100433392,
+          "minimum": 89480190,
+          "p50": 99942274,
+          "p95": 108936277,
+          "p99": 108936277
+        },
+        "lexical": {
+          "maximum": 66168267,
+          "mean": 59667538,
+          "minimum": 54183343,
+          "p50": 58653601,
+          "p95": 66168267,
+          "p99": 66168267
+        }
+      },
+      "storage": {
+        "backup_bytes": 9932447,
+        "backup_snapshot_bytes": 9931948,
+        "data_bytes_after_compaction": 45587929,
+        "data_bytes_before_snapshot": 47602790,
+        "logical_payload_bytes": 9654550,
+        "restored_snapshot_bytes": 9931948,
+        "snapshot_bytes": 9931948,
+        "write_amplification_micros": 4930606
+      }
+    },
+    {
+      "ingest": {
+        "record_ingest_nanos": 325733450,
+        "records": 10000,
+        "records_per_second": 30699,
+        "vector_ingest_nanos": 195653869,
+        "vectors": 10000,
+        "vectors_per_second": 51110
+      },
+      "lifecycle_nanos": {
+        "backup": 199197470,
+        "compaction": 75579303,
+        "compaction_generation": 2,
+        "delete_record": 197430,
+        "delete_vector": 67854,
+        "initial_write": 522009289,
+        "open_restored": 59312156,
+        "rebuild_from_authority": 457151548,
+        "rebuild_replayed_transactions": 82,
+        "reopen_after_compaction": 58250057,
+        "reopen_caught_up": 77270992,
+        "reopen_replayed_transactions": 0,
+        "restore": 771202878,
+        "snapshot": 76022097,
+        "update_record": 1175992,
+        "update_vector": 99591
+      },
+      "parameters": {
+        "corpus_size": 10000,
+        "dataset": "deterministic_synthetic_mixed_document_vector_v1",
+        "dimensions": 768,
+        "empty_space_covered_by_unit_fixture": true,
+        "lexical_corpus": true,
+        "mixed_document_vector_workload": true,
+        "near_ties_covered_by_compatibility_fixture": true,
+        "sparse_space_covered_by_unit_fixture": true,
+        "top_k": 10,
+        "updates_and_deletes_exercised": true
+      },
+      "proof_bytes": {
+        "exact": 1937,
+        "hybrid": 4691,
+        "lexical": 2187
+      },
+      "proof_generation_nanos": {
+        "exact": {
+          "maximum": 120687353,
+          "mean": 110662422,
+          "minimum": 106988189,
+          "p50": 108978454,
+          "p95": 120687353,
+          "p99": 120687353
+        },
+        "hybrid": {
+          "maximum": 176256745,
+          "mean": 164471840,
+          "minimum": 157214002,
+          "p50": 165323091,
+          "p95": 176256745,
+          "p99": 176256745
+        },
+        "lexical": {
+          "maximum": 133857222,
+          "mean": 121615773,
+          "minimum": 113775525,
+          "p50": 120034503,
+          "p95": 133857222,
+          "p99": 133857222
+        }
+      },
+      "proof_verification_nanos": {
+        "exact": {
+          "maximum": 258956057,
+          "mean": 214169965,
+          "minimum": 188612013,
+          "p50": 199043932,
+          "p95": 258956057,
+          "p99": 258956057
+        },
+        "hybrid": {
+          "maximum": 278696414,
+          "mean": 267034819,
+          "minimum": 256109934,
+          "p50": 267117724,
+          "p95": 278696414,
+          "p99": 278696414
+        },
+        "lexical": {
+          "maximum": 298410666,
+          "mean": 271532292,
+          "minimum": 254967149,
+          "p50": 272447043,
+          "p95": 298410666,
+          "p99": 298410666
+        }
+      },
+      "quality": {
+        "exact_recall_at_k_micros": 1000000,
+        "exact_reference": "exhaustive canonical scorer over every durable candidate",
+        "hybrid_matches_reference": true,
+        "hybrid_reference": "hyphae deterministic RRF reference executor",
+        "lexical_matches_reference": true,
+        "lexical_reference": "hyphae BM25F reference executor"
+      },
+      "retrieval_latency_nanos": {
+        "exact": {
+          "maximum": 46780671,
+          "mean": 43381411,
+          "minimum": 41137880,
+          "p50": 42953138,
+          "p95": 46780671,
+          "p99": 46780671
+        },
+        "hybrid": {
+          "maximum": 104618859,
+          "mean": 98097254,
+          "minimum": 91572280,
+          "p50": 98646263,
+          "p95": 104618859,
+          "p99": 104618859
+        },
+        "lexical": {
+          "maximum": 55816684,
+          "mean": 50951351,
+          "minimum": 47141764,
+          "p50": 50795141,
+          "p95": 55816684,
+          "p99": 55816684
+        }
+      },
+      "storage": {
+        "backup_bytes": 17612448,
+        "backup_snapshot_bytes": 17611948,
+        "data_bytes_after_compaction": 53267929,
+        "data_bytes_before_snapshot": 90672230,
+        "logical_payload_bytes": 17334550,
+        "restored_snapshot_bytes": 17611948,
+        "snapshot_bytes": 17611948,
+        "write_amplification_micros": 5230723
+      }
+    }
+  ],
+  "schema": "hyphae-retrieval-benchmark-v2",
+  "timing_clock": "std::time::Instant"
+}

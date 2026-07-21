@@ -171,8 +171,11 @@ jobs:
           python tools/check_documentation.py --binary target/debug/hyphae
           python tools/run_documentation_examples.py --binary target/debug/hyphae
           cargo run -p hyphae-engine --example embedded --locked -- "$RUNNER_TEMP/hyphae-doc-example"
-      - name: Verify historical disk fixtures are reproducible
-        run: python tools/generate_compatibility_fixture.py --binary target/debug/hyphae --check compatibility/v1/data-directory.json
+      - name: Verify immutable historical disk compatibility fixtures
+        run: |
+          python tools/generate_compatibility_fixture.py --binary target/debug/hyphae --check compatibility/v1/data-directory.json
+          cargo test -p hyphae-engine --example generate_disk_format_2_fixture --locked
+          cargo test -p hyphae-engine --example generate_retrieval_goldens --locked
       - name: Test deterministic packaging and checksums
         run: |
           python -m compileall -q packaging tools
@@ -181,12 +184,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p artifacts/install
+          mkdir -p artifacts
           python packaging/package.py \
             --binary target/debug/hyphae \
             --target x86_64-unknown-linux-gnu \
             --output-dir artifacts
-          tar -xzf artifacts/*.tar.gz -C artifacts/install
-          installed="$(find artifacts/install -type f -name hyphae -print -quit)"
-          test -n "$installed"
-          "$installed" version --json
+          python packaging/verify_install.py --directory artifacts

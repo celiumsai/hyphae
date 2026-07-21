@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "status": "ok",
+  "host": "WSL2 Debian x86_64",
+  "toolchain": "nightly-2026-07-01",
+  "duration_seconds_per_target": 15,
+  "targets": [
+    {
+      "name": "document_decode",
+      "executions": 7782574,
+      "crashes": 0,
+      "status": "ok"
+    },
+    {
+      "name": "proof_decode",
+      "executions": 2367939,
+      "crashes": 0,
+      "status": "ok"
+    },
+    {
+      "name": "retrieval_proof_decode",
+      "executions": 5983673,
+      "crashes": 0,
+      "status": "ok"
+    },
+    {
+      "name": "vector_request_decode",
+      "executions": 85470,
+      "crashes": 0,
+      "status": "ok"
+    },
+    {
+      "name": "lexical_hybrid_decode",
+      "executions": 137107,
+      "crashes": 0,
+      "status": "ok"
+    },
+    {
+      "name": "snapshot_verify",
+      "executions": 1678371,
+      "crashes": 0,
+      "status": "ok"
+    }
+  ],
+  "notes": [
+    "Each target exited with status 0.",
+    "The temporary fuzz target and corpus directories were kept outside the repository."
+  ]
+}

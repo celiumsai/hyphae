@@ -88,6 +88,13 @@ def execute(binary: Path, root: Path) -> None:
             put = remote(binary, root, base_url, "put")
             get = remote(binary, root, base_url, "get")
             query = remote(binary, root, base_url, "query")
+            define_vector_space = remote(binary, root, base_url, "define-vector-space")
+            put_vectors = remote(binary, root, base_url, "put-vectors")
+            exact = remote(binary, root, base_url, "retrieve-exact")
+            define_lexical_index = remote(binary, root, base_url, "define-lexical-index")
+            lexical = remote(binary, root, base_url, "retrieve-lexical")
+            hybrid = remote(binary, root, base_url, "retrieve-hybrid")
+            delete_vectors = remote(binary, root, base_url, "delete-vectors")
             delete = remote(binary, root, base_url, "delete")
             if put.get("status") != "committed":
                 raise RuntimeError("documented put did not commit")
@@ -102,6 +109,24 @@ def execute(binary: Path, root: Path) -> None:
                 raise RuntimeError("documented query result did not match its explanation")
             if delete.get("status") != "committed":
                 raise RuntimeError("documented delete did not commit")
+            for name, receipt in (
+                ("define-vector-space", define_vector_space),
+                ("put-vectors", put_vectors),
+                ("define-lexical-index", define_lexical_index),
+                ("delete-vectors", delete_vectors),
+            ):
+                if receipt.get("status") != "committed":
+                    raise RuntimeError(f"documented {name} did not commit")
+            for name, result in (
+                ("exact", exact),
+                ("lexical", lexical),
+                ("hybrid", hybrid),
+            ):
+                if (
+                    result.get("outcome", {}).get("status") != "matches"
+                    or not isinstance(result.get("proof"), dict)
+                ):
+                    raise RuntimeError(f"documented {name} retrieval was not proof-bearing")
         finally:
             if process.poll() is None:
                 process.terminate()
@@ -121,7 +146,10 @@ def main() -> int:
     if not binary.is_file():
         parser.error(f"Hyphae binary does not exist: {binary}")
     execute(binary, root)
-    print("documentation examples ok: put, get, query/aggregation, delete")
+    print(
+        "documentation examples ok: KV/query, vector mutation, "
+        "exact/lexical/hybrid retrieval"
+    )
     return 0
 
 

@@ -47,6 +47,12 @@ jobs:
         run: cargo +nightly-2026-07-01 fuzz run document_decode -- -max_total_time=15 -max_len=1048576
       - name: Fuzz result-proof decoder
         run: cargo +nightly-2026-07-01 fuzz run proof_decode -- -max_total_time=15 -max_len=1048576
+      - name: Fuzz retrieval-proof decoders
+        run: cargo +nightly-2026-07-01 fuzz run retrieval_proof_decode -- -max_total_time=15 -max_len=1048576
+      - name: Fuzz vector request and metadata decoding
+        run: cargo +nightly-2026-07-01 fuzz run vector_request_decode -- -max_total_time=15 -max_len=1048576
+      - name: Fuzz lexical tokenizer, index, and hybrid request decoding
+        run: cargo +nightly-2026-07-01 fuzz run lexical_hybrid_decode -- -max_total_time=15 -max_len=1048576
       - name: Fuzz snapshot verifier
         run: cargo +nightly-2026-07-01 fuzz run snapshot_verify -- -max_total_time=15 -max_len=1048576
       - name: Preserve only crash artifacts
