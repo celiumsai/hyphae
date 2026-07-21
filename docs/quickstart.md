@@ -10,15 +10,17 @@ option, see [`cli/reference.md`](cli/reference.md).
 
 ## Install the binary
 
-Install the public release from crates.io:
+The published release is `0.1.0`. The `0.2.0` source candidate is not
+available from crates.io or GitHub until publication is explicitly authorized.
+After publication, the matching install command will be:
 
 ```bash
-cargo install hyphae-cli --version 0.1.0 --locked
+cargo install hyphae-cli --version 0.2.0 --locked
 hyphae version --json
 ```
 
 Prebuilt native archives and their checksum, SBOM, signature, and provenance
-bundles are attached to the matching
+bundles will be attached to the matching
 [GitHub release](https://github.com/celiumsai/hyphae/releases/latest).
 
 ## Build from source
@@ -136,6 +138,53 @@ $proven = .\target\release\hyphae.exe query `
 complete snapshot, reexecutes the embedded operation, and requires an exact
 result match. It does not open a live data directory or contact the network.
 
+## Run proof-bearing durable retrieval
+
+Durable vector, lexical, and hybrid operations use the same binary through
+the public `/v1` surface. The maintained request files under `examples/http`
+create a two-dimensional vector space, persist vectors, define a lexical
+index, and query all three retrieval modes:
+
+```bash
+./target/release/hyphae serve --data-dir "$HYPHAE_DATA_DIR"
+```
+
+In a second shell:
+
+```bash
+./target/release/hyphae remote --base-url http://127.0.0.1:8787 \
+  define-vector-space --request examples/http/define-vector-space.json
+./target/release/hyphae remote --base-url http://127.0.0.1:8787 \
+  put --request examples/http/put.json
+./target/release/hyphae remote --base-url http://127.0.0.1:8787 \
+  put-vectors --request examples/http/put-vectors.json
+./target/release/hyphae remote --base-url http://127.0.0.1:8787 \
+  define-lexical-index --request examples/http/define-lexical-index.json
+./target/release/hyphae remote --base-url http://127.0.0.1:8787 \
+  retrieve-exact --request examples/http/retrieve-exact.json > exact.json
+./target/release/hyphae remote --base-url http://127.0.0.1:8787 \
+  retrieve-lexical --request examples/http/retrieve-lexical.json > lexical.json
+./target/release/hyphae remote --base-url http://127.0.0.1:8787 \
+  retrieve-hybrid --request examples/http/retrieve-hybrid.json > hybrid.json
+```
+
+Each retrieval response contains canonical proof bytes, a trusted-channel
+anchor candidate, and the exact witness reference. Extract `proof.data` from
+one response as standard padded base64 into `result.hyrproof`, save the
+`proof` object itself as `proof.json`, and download its witness:
+
+```bash
+./target/release/hyphae remote --base-url http://127.0.0.1:8787 \
+  witness --proof proof.json --out witness.hysnap
+./target/release/hyphae verify-retrieval --kind exact \
+  --proof result.hyrproof --snapshot witness.hysnap \
+  --anchor '<proof.anchor_digest>'
+```
+
+The verifier opens neither the live data directory nor a network connection.
+The automated package-install smoke and CLI integration test execute exact,
+lexical, and hybrid proof verification end to end.
+
 ## Optional `/v1` server
 
 The same binary can explicitly own the directory and expose the public API on
@@ -161,13 +210,11 @@ see [`clients/v1.md`](clients/v1.md).
 
 ## Current boundary
 
-The current implementation exposes durable KV documents, deterministic
-structured query, snapshot, compaction, backup/restore/doctor, offline result
-proofs, and the optional secure OpenAPI-first `/v1` server and equivalent
-public clients.
-Semantic retrieval already has
-provider-neutral exact reference semantics, but no embedding provider is
-enabled or required.
+The current implementation exposes durable KV documents, named vector spaces,
+provider-free lexical definitions, deterministic exact/lexical/hybrid
+retrieval, snapshot, compaction, backup/restore/doctor, both offline proof
+formats, and the optional secure OpenAPI-first `/v1` server with equivalent
+public clients. No embedding provider is enabled or required.
 
 Continue through the [documentation index](README.md) for embedding, complete
 CLI/configuration references, SDK/MCP guides, durable formats, security, and

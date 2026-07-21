@@ -39,6 +39,11 @@ directory, rebuilds its embedded index, reopens it, and compares the checkpoint
 before the final destination becomes visible. A corrupt source fails without
 activating `./hyphae-restored`.
 
+For disk format 2, the backup identity covers KV entries, vector-space
+definitions, vectors, lexical-index definitions, and durable receipts. Restore
+rebuilds Redb only from those logical sections. Validate at least one exact
+and one lexical retrieval after restore when the application uses them.
+
 Restore does not merge data and never modifies the source backup. To replace
 an existing installation, restore to a new path, run `doctor`, stop the old
 process, and switch the application to the verified new directory.
@@ -51,6 +56,7 @@ cycle:
 1. run `backup-verify` on the stored copy;
 2. restore it to a disposable new directory;
 3. run `doctor` and an application-specific read/query check;
+   include exact/lexical/hybrid checks for retrieval-enabled data;
 4. remove only the disposable restored directory after validation.
 
 Keep at least one independently stored generation according to the operator's

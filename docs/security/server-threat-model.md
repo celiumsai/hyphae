@@ -19,8 +19,9 @@ access to one process; it does not establish multitenancy or end-to-end TLS.
 
 - complete request body bytes and receive time before durable work starts;
 - JSON nesting depth and total nodes;
-- key, document, batch, filter, sort, group, metric, page, scan, match, proof,
-  snapshot witness, and response sizes;
+- key, document, vector dimension/candidate bytes, lexical documents/tokens,
+  batch, filter, sort, group, metric, page, scan, match, proof, snapshot
+  witness, and response sizes;
 - admitted concurrent data operations;
 - cooperative query and verification timeouts.
 
@@ -45,10 +46,16 @@ environment variable or restricted file, never from an argv value. Unix token
 files with group/other permissions are rejected; Windows operators must apply
 an account-only ACL.
 
-Remote deployment still requires a trusted TLS boundary. Hyphae 0.1.0 does
+Remote deployment still requires a trusted TLS boundary. Hyphae 0.2.0 does
 not claim built-in certificate management, OAuth, tenant isolation, WAF,
 rate-limit coordination across processes, or denial-of-service resistance
 beyond its documented local limits.
+
+Retrieval requests are untrusted computation. Q15 validation rejects invalid
+elements, dimensions, and zero vectors before durable append or ranking.
+Exact, lexical, and hybrid operations enforce independent work/time/result
+budgets and return no partial ranking. Lexical normalization is deterministic
+but is not a content-safety or secret-redaction mechanism.
 
 ## Error disclosure
 

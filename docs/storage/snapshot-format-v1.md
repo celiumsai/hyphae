@@ -1,46 +1,39 @@
-# Logical snapshot format v1
+# Logical snapshot formats v1 and v2
 
-Status: normative for Hyphae `0.1.0` disk format `1`.
+Status: normative for disk formats `1` and `2`.
 
-A snapshot is a portable, logical image of the materialized KV state at one
-verified log checkpoint. It never copies redb implementation files. Entries
-are emitted in strict bytewise key order so identical logical state and
-checkpoint produce identical content.
+A snapshot is a portable, canonical logical image at one verified log
+checkpoint. It never copies Redb implementation files. All integers are
+unsigned little-endian unless a field states otherwise. Every count and length
+is checked before allocation.
 
-All integers are unsigned little-endian. The header is exactly 112 bytes.
+## Common header
 
-## Header
+Both versions use a 112-byte header.
 
 | Offset | Size | Field |
 |---:|---:|---|
 | 0 | 8 | Magic ASCII `HYSNAP01` |
-| 8 | 2 | Disk format version (`1`) |
-| 10 | 2 | Reserved flags; must be zero |
-| 12 | 8 | Materialized commit-frame sequence, or zero for an empty log |
-| 20 | 32 | Commit-frame BLAKE3 digest, or all zero for an empty log |
+| 8 | 2 | Disk format version (`1` or `2`) |
+| 10 | 2 | Reserved flags; zero |
+| 12 | 8 | Materialized commit-frame sequence, or zero |
+| 20 | 32 | Commit-frame BLAKE3 digest, or all zero |
 | 52 | 8 | KV entry count |
 | 60 | 8 | Durable idempotency receipt count |
 | 68 | 8 | Payload length |
-| 76 | 4 | CRC32C of header bytes `0..76` followed by the payload |
-| 80 | 32 | BLAKE3 of header bytes `0..80` followed by the payload |
+| 76 | 4 | CRC32C of header bytes `0..76` followed by payload |
+| 80 | 32 | BLAKE3 of header bytes `0..80` followed by payload |
 
-## Entry encoding
+The snapshot BLAKE3 is the logical witness digest. It is not a signature.
 
-The payload first contains exactly `KV entry count` records:
+## Format-1 payload
 
-| Size | Field |
-|---:|---|
-| 4 | Key length |
-| 8 | Value length |
-| N | Non-empty binary key, limited to 1 MiB |
-| M | Binary value |
+Format 1 contains the KV section followed by receipts.
 
-Keys must be strictly increasing and therefore cannot repeat. Values are
-streamed during creation and verification; verification does not allocate a
-buffer proportional to value size.
+Each KV entry is `u32 key length || u64 value length || key || value`. Keys
+are nonempty, at most 1 MiB, and strictly bytewise increasing.
 
-The KV section is followed by exactly `durable idempotency receipt count`
-fixed-size records:
+Each receipt is 88 bytes:
 
 | Size | Field |
 |---:|---|
@@ -49,24 +42,46 @@ fixed-size records:
 | 32 | Commit-frame digest |
 | 32 | Canonical transaction digest |
 
-Receipts are strictly sorted by UUID bytes. Each commit sequence is nonzero
-and no later than the snapshot checkpoint. Persisting these receipts in the
-logical snapshot keeps exact retries and conflicting UUID detection stable
-after older log segments are retired.
+Receipts are strictly sorted by UUID bytes and cannot reference a sequence
+after the checkpoint.
+
+## Format-2 payload
+
+Format 2 extends the logical payload without changing the outer snapshot
+framing. It encodes these canonical sections:
+
+1. KV entries, in binary-key order.
+2. Vector-space definitions, in name-byte order.
+3. Vector records, in `(space name, binary key)` order.
+4. Lexical-index definitions, in name-byte order.
+5. Durable receipts, in UUID-byte order.
+
+The payload carries explicit section counts. Vector identifiers, dimensions,
+Q15 values, and ordering follow
+[durable vector record format v1](vector-record-format-v1.md). Lexical
+definitions contain their canonical index name plus exact field paths and
+positive `weight_micros`; definitions and paths cannot repeat.
+
+The snapshot metadata exposed by storage includes `entry_count`,
+`vector_space_count`, `vector_count`, `lexical_index_count`, and
+`receipt_count`. All five logical collections participate in the canonical
+snapshot digest, backup identity, restore comparison, compaction, and derived
+index rebuild.
 
 ## Creation and verification
 
-Hyphae streams the caught-up redb index into a unique temporary file, writes
-and synchronizes the completed header and payload, verifies the temporary
-file from disk, then atomically renames it into `snapshots/`. On Unix the
-snapshot directory is synchronized after the rename. A canonical snapshot
-already present for the same checkpoint is verified before reuse.
+Hyphae streams caught-up logical state into a unique temporary file, writes
+and synchronizes it, verifies it from disk, and atomically renames it into
+`snapshots/`. On Unix the snapshot directory is synchronized after rename. A
+canonical snapshot already present for the same checkpoint is verified before
+reuse.
 
-Verification rejects future versions, flags, length overflows or mismatches,
-invalid or unordered keys or receipts, trailing or truncated bytes, CRC32C
-mismatch, and BLAKE3 mismatch. The checkpoint digest links the logical state
-to a verified commit in the authoritative log when the snapshot is restored.
+Verification rejects unsupported versions, flags, length overflow or
+mismatch, invalid or unordered logical records, duplicate identities,
+trailing or truncated bytes, CRC32C mismatch, and BLAKE3 mismatch. Format 2
+also rejects unknown vector/lexical tags, invalid Q15 values, dimension
+mismatch, and malformed field paths.
 
-CRC32C and BLAKE3 detect accidental corruption. They are not signatures and
-do not authenticate a directory against an attacker able to rewrite the
-snapshot and log together.
+The checkpoint digest links logical state to a verified authoritative commit.
+CRC32C and BLAKE3 detect accidental corruption; they do not authenticate a
+directory against an attacker able to rewrite the snapshot and log together.

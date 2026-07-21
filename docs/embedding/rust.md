@@ -25,8 +25,8 @@ Applications normally start with `hyphae-engine`:
 
 ```toml
 [dependencies]
-hyphae-engine = "=0.1.0"
-hyphae-query = "=0.1.0"
+hyphae-engine = "=0.2.0"
+hyphae-query = "=0.2.0"
 uuid = { version = "1", features = ["v7"] }
 ```
 

@@ -1,6 +1,7 @@
 # Hyphae documentation
 
-This directory is the canonical human documentation for Hyphae `0.1.0`.
+This directory is the canonical human documentation for shipped Hyphae
+behavior.
 Public wire behavior is normative in `contracts/`; durable encodings and
 reference semantics are normative in the versioned specification documents
 linked below. Tests and checked-in compatibility fixtures enforce both.
@@ -43,7 +44,12 @@ linked below. Tests and checked-in compatibility fixtures enforce both.
 
 - [Structured query semantics v1](query/reference-semantics-v1.md)
 - [Exact retrieval semantics v1](retrieval/reference-semantics-v1.md)
+- [Durable exact retrieval semantics v2](retrieval/exact-reference-semantics-v2.md)
+- [Lexical retrieval semantics v1](retrieval/lexical-reference-semantics-v1.md)
+- [Hybrid retrieval semantics v1](retrieval/hybrid-reference-semantics-v1.md)
+- [0.2 retrieval benchmark methodology](performance/retrieval-benchmark-0.2.md)
 - [Result proof format v1](provenance/result-proof-v1.md)
+- [Retrieval proof format v1](provenance/retrieval-proof-v1.md)
 - [Baseline threat model](security/threat-model.md)
 - [Server threat model](security/server-threat-model.md)
 
@@ -52,6 +58,7 @@ linked below. Tests and checked-in compatibility fixtures enforce both.
 - [Data directory and architecture](architecture/overview.md#data-directory)
 - [Log format v1](storage/log-format-v1.md)
 - [Mutation format v1](storage/mutation-format-v1.md)
+- [Durable vector record format v1](storage/vector-record-format-v1.md)
 - [Document format v1](storage/document-format-v1.md)
 - [Snapshot format v1](storage/snapshot-format-v1.md)
 - [Manifest format v1](storage/manifest-format-v1.md)
@@ -60,9 +67,13 @@ linked below. Tests and checked-in compatibility fixtures enforce both.
 ## Decisions and governance
 
 - [Roadmap](roadmap.md)
+- [0.2 execution roadmap](roadmap-0.2.md)
 - [Porting ledger](porting/ledger.md)
 - [Development guide](development.md)
 - [0.1.0 release gate](gates/0.1.0.md)
+- [0.2.0 release gate](gates/0.2.0.md)
+- [0.2 local evidence catalog](gates/evidence/README.md)
+- [0.2 Gate 0 repository audit and baseline](gates/0.2-gate-0.md)
 - Phase evidence: [2](gates/phase-2.md), [3](gates/phase-3.md),
   [4](gates/phase-4.md), [5](gates/phase-5.md), [6](gates/phase-6.md),
   [7](gates/phase-7.md), and [8](gates/phase-8.md)
@@ -82,13 +93,20 @@ linked below. Tests and checked-in compatibility fixtures enforce both.
 - [ADR-0010: Generated clients and MCP stdio](adr/0010-generated-clients-and-mcp-stdio.md)
 - [ADR-0011: Optional host-owned integrations](adr/0011-optional-host-owned-integrations.md)
 - [ADR-0012: Portable recovery and verifiable releases](adr/0012-portable-recovery-and-verifiable-releases.md)
+- [ADR-0013: Durable named vector records](adr/0013-durable-vector-records.md)
+- [ADR-0014: Durable exact retrieval](adr/0014-exact-durable-retrieval.md)
+- [ADR-0015: Canonical retrieval scoring](adr/0015-canonical-retrieval-scoring.md)
+- [ADR-0016: Retrieval proof format](adr/0016-retrieval-proof-format.md)
+- [ADR-0017: Provider-free lexical retrieval](adr/0017-provider-free-lexical-retrieval.md)
+- [ADR-0018: Deterministic hybrid retrieval](adr/0018-deterministic-hybrid-retrieval.md)
 
 ## Documentation contract
 
-Repository documentation is written in English and must describe shipped
-behavior, not intent. `python tools/check_documentation.py --binary
-target/debug/hyphae` verifies local links, this index, JSON examples, and the
-top-level CLI command inventory. `python tools/run_documentation_examples.py
---binary target/debug/hyphae` executes the maintained HTTP examples. Public
-behavior changes must update the relevant contract, guide, example, and gate
-evidence in the same change.
+Repository documentation is written in English. Normative specifications and
+product guides must describe shipped behavior, not intent; roadmaps and
+explicitly marked planning gates may describe ordered future work. `python
+tools/check_documentation.py --binary target/debug/hyphae` verifies local
+links, this index, JSON examples, and the top-level CLI command inventory.
+`python tools/run_documentation_examples.py --binary target/debug/hyphae`
+executes the maintained HTTP examples. Public behavior changes must update the
+relevant contract, guide, example, and gate evidence in the same change.

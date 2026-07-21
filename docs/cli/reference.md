@@ -23,6 +23,7 @@ This page explains semantics and side effects that do not fit in short help.
 - `restore`
 - `doctor`
 - `verify`
+- `verify-retrieval`
 - `serve`
 - `remote`
 - `mcp`
@@ -183,6 +184,20 @@ Verifies a canonical result proof completely offline. The anchor is a trusted
 matches the caller's anchor, reexecutes get/query, and requires the exact
 result. It opens no live data directory and performs no network request.
 
+## `verify-retrieval`
+
+```text
+hyphae verify-retrieval --kind <exact|lexical|hybrid>
+  --proof <FILE> --snapshot <FILE> --anchor <64_HEX_CHARS>
+```
+
+Verifies a canonical `.hyrproof` completely offline. The caller selects the
+operation because exact, lexical, and hybrid proof payloads are closed,
+independently decoded formats. The verifier validates both files, checks the
+trusted retrieval anchor, reconstructs the relevant durable snapshot state,
+and reexecutes the complete operation under bounded reference semantics. It
+opens no live data directory and performs no network request.
+
 ## `serve`
 
 ```text
@@ -216,7 +231,14 @@ client and accepts `HYPHAE_BASE_URL`, `HYPHAE_BEARER_TOKEN_FILE`, and
 | `get --request <FILE_OR_->` | `GetRequestV1` JSON | Proven get response |
 | `delete --request <FILE_OR_->` | `DeleteRequestV1` JSON | Commit receipt |
 | `query --request <FILE_OR_->` | `QueryRequestV1` JSON | Proven query response |
-| `witness --proof <FILE> --out <NEW_FILE>` | `ProofV1` JSON | Verified witness bytes |
+| `define-vector-space --request <FILE_OR_->` | `DefineVectorSpaceRequestV1` JSON | Commit receipt |
+| `put-vectors --request <FILE_OR_->` | `PutVectorsRequestV1` JSON | Commit receipt |
+| `delete-vectors --request <FILE_OR_->` | `DeleteVectorsRequestV1` JSON | Commit receipt |
+| `retrieve-exact --request <FILE_OR_->` | `ExactRetrievalRequestV1` JSON | Proven exact outcome |
+| `define-lexical-index --request <FILE_OR_->` | `DefineLexicalIndexRequestV1` JSON | Commit receipt |
+| `retrieve-lexical --request <FILE_OR_->` | `LexicalRetrievalRequestV1` JSON | Proven lexical outcome |
+| `retrieve-hybrid --request <FILE_OR_->` | `HybridRetrievalRequestV1` JSON | Proven hybrid outcome |
+| `witness --proof <FILE> --out <NEW_FILE>` | `ProofV1` or `RetrievalProofV1` JSON | Verified witness bytes |
 <!-- remote-commands:end -->
 
 `-` means read the complete request from stdin. The witness command checks
@@ -231,7 +253,7 @@ hyphae mcp --base-url <ROOT_ORIGIN> [--bearer-token-file <PATH>]
 
 Runs MCP revision `2025-11-25` as newline-delimited JSON-RPC 2.0 over stdio.
 It opens no listener or data directory. The adapter enforces a 4 MiB message
-bound and exposes five tools through canonical schemas. See the
+bound and exposes twelve tools through canonical schemas. See the
 [MCP guide](../../mcp/README.md).
 
 ## Environment summary

@@ -51,7 +51,7 @@ variables avoid argv exposure but may still be visible to privileged process
 inspection. Choose the secret channel appropriate for the host.
 
 Bearer authentication is not transport encryption. Put any remotely exposed
-server behind a trusted TLS boundary; Hyphae `0.1.0` does not manage
+server behind a trusted TLS boundary; Hyphae `0.2.0` does not manage
 certificates.
 
 ## Server defaults

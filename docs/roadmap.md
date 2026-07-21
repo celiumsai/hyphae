@@ -1,4 +1,12 @@
-# Roadmap to 0.1.0
+# Hyphae roadmap
+
+The active `0.2` execution record is
+[`roadmap-0.2.md`](roadmap-0.2.md). It targets proof-bearing durable retrieval
+and records Gates 0 through 8 as complete locally. Gate 9 is locally complete;
+the hosted Linux/macOS/Windows matrix, tag, push, and publication remain
+pending explicit release authorization.
+
+## 0.1.0 release roadmap
 
 The phases are ordered gates. A later phase may be prototyped early, but it
 cannot be declared complete while an earlier gate is red.

@@ -5,14 +5,40 @@ for public APIs after `0.1.0`; on-disk format versions are tracked separately.
 
 ## [Unreleased]
 
+No changes yet.
+
+## [0.2.0] - Unreleased
+
+This source version is a local release candidate. It is not tagged, pushed, or
+published until explicit release authorization.
+
+### Added
+
+- Added durable named vector spaces and atomic vector mutations to disk format
+  `2`, including snapshot, compaction, backup, restore, migration, and
+  derived-index rebuild coverage.
+- Added deterministic exact vector retrieval with canonical signed Q15 cosine
+  scores, bounded execution, explicit abstention, and stable binary-key ties.
+- Added provider-free lexical retrieval with pinned Unicode normalization and
+  BM25F-compatible integer scoring.
+- Added deterministic hybrid retrieval using reciprocal-rank fusion and
+  per-modality explanations.
+- Added `retrieval-proof-v1`, including canonical encoding, offline
+  verification, and request/result/witness/semantics tamper detection.
+- Added additive `/v1` schemas, OpenAPI paths, server routes, generated models,
+  Rust/TypeScript/Python clients, remote CLI commands, MCP tools, and shared
+  conformance cases for vector, lexical, and hybrid retrieval.
+- Added immutable disk-format-2 and retrieval golden fixtures, generators, and
+  synchronization checks.
+- Added retrieval benchmarks, load and restart/restore soak gates, retrieval
+  proof fuzzing, and local release evidence.
+
 ### Fixed
 
 - Made the `hyphae-contracts` tarball self-contained by shipping byte-identical
   OpenAPI and JSON Schema assets inside the crate.
 - Reused the packaged contract constants from the CLI MCP adapter and included
   the engine compatibility fixture in its crate tarball.
-
-### Added
 
 - Added a release-readiness audit that rejects compile-time assets outside a
   crate or missing from its generated `cargo package` file list.

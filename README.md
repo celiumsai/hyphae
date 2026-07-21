@@ -25,9 +25,9 @@ Rust. Its base deployment is one native `hyphae` executable and one data
 directory. KV, structured query, recovery, and verification work offline
 without a database, cache, cloud service, embedding provider, or LLM.
 
-**Current release:** `0.1.0`. Visit [hyphae.dev](https://hyphae.dev), inspect
-the [release artifacts](https://github.com/celiumsai/hyphae/releases/latest),
-or use the crates published under the `hyphae-*` namespace.
+**Current source version:** `0.2.0` (unpublished release candidate). The latest
+published release remains `0.1.0`; no `0.2.0` tag, GitHub update, or package
+publication exists until explicit release authorization.
 
 ## What Hyphae does
 
@@ -37,12 +37,14 @@ or use the crates published under the `hyphae-*` namespace.
 - Makes mutation retries durable and idempotent through caller-visible UUIDs.
 - Executes deterministic filters, global sorting, logical cursors, and
   grouped/global aggregations with hard budgets and no partial results.
-- Performs exact provider-neutral cosine retrieval with explicit abstention
-  when a Rust host supplies vectors.
+- Persists named vector spaces and executes deterministic exact cosine
+  retrieval with explicit abstention.
+- Builds a reconstructible provider-free lexical index and fuses vector and
+  lexical results with deterministic reciprocal-rank fusion.
 - Creates canonical snapshots, commits anchored compaction generations, and
   rejects unsupported or corrupt formats.
-- Produces portable result proofs and reexecutes them offline against a
-  caller-pinned anchor and complete snapshot witness.
+- Produces portable result and retrieval proofs and verifies them offline
+  against their canonical request, result, semantics, and snapshot witnesses.
 - Creates, verifies, and atomically restores portable logical backups; `doctor`
   reports complete local recovery evidence.
 - Optionally exposes a secure, loopback-first OpenAPI `/v1` server.
@@ -58,16 +60,18 @@ surface differences, default limits, and deliberate non-capabilities.
 
 ## Install
 
-Install the single binary from crates.io:
+Until `0.2.0` is authorized and published, build the candidate from this
+checkout:
 
 ```bash
-cargo install hyphae-cli --version 0.1.0 --locked
+cargo build --release --locked -p hyphae-cli
 hyphae version --json
 ```
 
-For prebuilt Linux, macOS, and Windows archives, download the matching asset
-from the [latest GitHub release](https://github.com/celiumsai/hyphae/releases/latest)
-and follow the [signature and provenance verification guide](docs/release/verification.md).
+For the published `0.1.0` binary or archives, use crates.io or the
+[latest GitHub release](https://github.com/celiumsai/hyphae/releases/latest).
+The `0.2.0` publication command will become valid only after release
+authorization.
 
 ## Five-minute local flow
 

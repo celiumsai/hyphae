@@ -44,6 +44,12 @@ future unsupported format. Required format migrations are versioned,
 idempotent, and executed while the directory lock is held; release notes must
 name any migration before an upgrade is authorized.
 
+Upgrading from `0.1.x` to `0.2.0` migrates disk format `1` to `2`. Format 2
+adds durable vector-space/vector/lexical-definition sections and changes the
+canonical snapshot identity. Once migration commits, a 0.1 binary rejects the
+directory before replay. Keep the verified format-1 backup until retrieval,
+backup/restore, and application checks pass on the new directory.
+
 Rollback means stopping the new process and restoring the pre-upgrade backup
 to a new directory with a binary that supports that backup's disk format. Do
 not point an older binary at a directory already migrated to a newer format.
@@ -58,4 +64,4 @@ cargo build --release --locked -p hyphae-cli
 ```
 
 Release archives, not local source builds, are the supported installation
-artifact for `0.1.0` and later.
+artifact.
