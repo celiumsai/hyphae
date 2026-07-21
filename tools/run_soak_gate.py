@@ -6,10 +6,12 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import socket
 import subprocess
 import tempfile
 import urllib.request
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from run_conformance import free_loopback_port, wait_until_live
 
@@ -106,6 +108,50 @@ def assert_retrieval(base_url: str, expected: int) -> None:
             raise RuntimeError(f"{name} retrieval lost durable results: {result!r}")
         if not isinstance(proof, dict) or proof.get("encoding") != "base64":
             raise RuntimeError(f"{name} retrieval lost its proof: {result!r}")
+
+
+def open_in_flight_put(base_url: str, record_count: int = 16) -> socket.socket:
+    """Leave a valid Put request partially streamed and waiting for its body."""
+    parsed = urlsplit(base_url)
+    if parsed.hostname is None or parsed.port is None:
+        raise RuntimeError(f"invalid soak base URL: {base_url}")
+
+    records = []
+    for index in range(record_count):
+        key = (1 << 63) + index
+        records.append(
+            {
+                "key_hex": key.to_bytes(8, "big").hex(),
+                "value": {
+                    "body": "interrupted unconfirmed write",
+                    "padding": "x" * 4_096,
+                    "sequence": index,
+                    "title": f"Interrupted soak item {index}",
+                },
+            }
+        )
+    body = json.dumps({"records": records}, separators=(",", ":")).encode("utf-8")
+    headers = (
+        "POST /v1/kv/put HTTP/1.1\r\n"
+        f"Host: {parsed.hostname}:{parsed.port}\r\n"
+        "Content-Type: application/json\r\n"
+        f"Content-Length: {len(body)}\r\n"
+        "Connection: close\r\n"
+        "\r\n"
+    ).encode("ascii")
+
+    connection = socket.create_connection((parsed.hostname, parsed.port), timeout=5)
+    connection.settimeout(0.25)
+    connection.sendall(headers)
+    connection.sendall(body[: len(body) // 2])
+    try:
+        response = connection.recv(1)
+    except TimeoutError:
+        response = b""
+    if response:
+        connection.close()
+        raise RuntimeError("partially streamed Put returned before its body was complete")
+    return connection
 
 
 def run_cli(binary: Path, *arguments: str) -> dict[str, object]:
@@ -216,6 +262,31 @@ def main() -> int:
                 process.kill()
                 process.wait(timeout=5)
 
+        process, base_url = start(binary, data)
+        interrupted_request: socket.socket | None = None
+        try:
+            assert_count(base_url, total)
+            assert_retrieval(base_url, total)
+            interrupted_request = open_in_flight_put(base_url)
+            if process.poll() is not None:
+                raise RuntimeError("server exited before the in-flight Put interruption")
+            process.kill()
+            process.wait(timeout=5)
+        finally:
+            if interrupted_request is not None:
+                interrupted_request.close()
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=5)
+
+        process, base_url = start(binary, data)
+        try:
+            assert_count(base_url, total)
+            assert_retrieval(base_url, total)
+        finally:
+            process.terminate()
+            process.wait(timeout=5)
+
         index_path = data / "indexes" / "primary.redb"
         index_path.unlink()
         process, base_url = start(binary, data)
@@ -256,7 +327,13 @@ def main() -> int:
 
     print(
         json.dumps(
-            {"version": 1, "status": "ok", "cycles": arguments.cycles, "records": total},
+            {
+                "version": 1,
+                "status": "ok",
+                "cycles": arguments.cycles,
+                "records": total,
+                "in_flight_write_interruptions": 1,
+            },
             separators=(",", ":"),
         )
     )
