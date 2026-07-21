@@ -108,7 +108,13 @@ def exercise_retrieval(
     live: Path,
     root: Path,
     environment: dict[str, str],
-) -> None:
+    *,
+    phase: str,
+    initialize: bool,
+    expected_outcomes: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    phase_root = root / phase
+    phase_root.mkdir()
     port = reserve_loopback_port()
     base_url = f"http://127.0.0.1:{port}"
     process = subprocess.Popen(
@@ -167,36 +173,43 @@ def exercise_retrieval(
         }
         request_paths: dict[str, Path] = {}
         for name, value in requests.items():
-            path = root / f"{name}.json"
+            path = phase_root / f"{name}.json"
             write_json(path, value)
             request_paths[name] = path
 
         remote = ["remote", "--base-url", base_url]
-        for command, request_name in (
-            ("define-vector-space", "vector-space"),
-            ("put-vectors", "vectors"),
-            ("define-lexical-index", "lexical-index"),
-        ):
-            run_json(
-                binary,
-                [*remote, command, "--request", str(request_paths[request_name])],
-                environment,
-            )
+        if initialize:
+            for command, request_name in (
+                ("define-vector-space", "vector-space"),
+                ("put-vectors", "vectors"),
+                ("define-lexical-index", "lexical-index"),
+            ):
+                run_json(
+                    binary,
+                    [*remote, command, "--request", str(request_paths[request_name])],
+                    environment,
+                )
 
+        outcomes: dict[str, Any] = {}
+        verification_inputs: list[tuple[str, Path, Path, str]] = []
         for kind in ("exact", "lexical", "hybrid"):
             response = run_json(
                 binary,
                 [*remote, f"retrieve-{kind}", "--request", str(request_paths[kind])],
                 environment,
             )
+            outcome = response.get("outcome")
+            if not isinstance(outcome, dict):
+                raise RuntimeError(f"installed {kind} retrieval omitted its outcome")
+            outcomes[kind] = outcome
             proof = response.get("proof")
             if not isinstance(proof, dict) or "data" not in proof or "anchor_digest" not in proof:
                 raise RuntimeError(f"installed {kind} retrieval omitted its proof")
-            proof_json = root / f"{kind}-proof.json"
+            proof_json = phase_root / f"{kind}-proof.json"
             write_json(proof_json, proof)
-            proof_file = root / f"{kind}.hyrproof"
+            proof_file = phase_root / f"{kind}.hyrproof"
             proof_file.write_bytes(base64.b64decode(str(proof["data"]), validate=True))
-            witness = root / f"{kind}.hysnap"
+            witness = phase_root / f"{kind}.hysnap"
             run_json(
                 binary,
                 [
@@ -209,20 +222,13 @@ def exercise_retrieval(
                 ],
                 environment,
             )
-            run_json(
-                binary,
-                [
-                    "verify-retrieval",
-                    "--kind",
-                    kind,
-                    "--proof",
-                    str(proof_file),
-                    "--snapshot",
-                    str(witness),
-                    "--anchor",
-                    str(proof["anchor_digest"]),
-                ],
-                environment,
+            verification_inputs.append(
+                (kind, proof_file, witness, str(proof["anchor_digest"]))
+            )
+        if expected_outcomes is not None and outcomes != expected_outcomes:
+            raise RuntimeError(
+                f"installed retrieval changed during {phase}: "
+                f"expected {expected_outcomes!r}, got {outcomes!r}"
             )
     finally:
         process.terminate()
@@ -231,6 +237,27 @@ def exercise_retrieval(
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait(timeout=10)
+
+    # Verification happens only after the serving process is gone. This proves
+    # the installed verifier needs neither the live data directory handle nor
+    # a reachable server.
+    for kind, proof_file, witness, anchor_digest in verification_inputs:
+        run_json(
+            binary,
+            [
+                "verify-retrieval",
+                "--kind",
+                kind,
+                "--proof",
+                str(proof_file),
+                "--snapshot",
+                str(witness),
+                "--anchor",
+                anchor_digest,
+            ],
+            environment,
+        )
+    return outcomes
 
 
 def verify_install(directory: Path) -> dict[str, Any]:
@@ -295,9 +322,25 @@ def verify_install(directory: Path) -> dict[str, Any]:
         if [row["key_hex"] for row in query.get("rows", [])] != ["616c706861", "62657461"]:
             raise RuntimeError("installed binary returned the wrong global query order")
 
-        exercise_retrieval(binary, live, root, environment)
+        baseline_retrieval = exercise_retrieval(
+            binary,
+            live,
+            root,
+            environment,
+            phase="baseline-retrieval",
+            initialize=True,
+        )
         run_json(binary, ["snapshot"], environment)
         run_json(binary, ["compact"], environment)
+        exercise_retrieval(
+            binary,
+            live,
+            root,
+            environment,
+            phase="compacted-retrieval",
+            initialize=False,
+            expected_outcomes=baseline_retrieval,
+        )
 
         proof = root / "result.hyproof"
         proven = run_json(
@@ -335,6 +378,15 @@ def verify_install(directory: Path) -> dict[str, Any]:
         )
         if restored_value.get("record", {}).get("value") != alpha:
             raise RuntimeError("installed restore did not preserve the durable value")
+        exercise_retrieval(
+            binary,
+            restored,
+            root,
+            environment,
+            phase="restored-retrieval",
+            initialize=False,
+            expected_outcomes=baseline_retrieval,
+        )
         return {
             "archive": archive.name,
             "engine_version": expected_version,
