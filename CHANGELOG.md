@@ -7,10 +7,7 @@ for public APIs after `0.1.0`; on-disk format versions are tracked separately.
 
 No changes yet.
 
-## [0.2.0] - Unreleased
-
-This source version is a local release candidate. It is not tagged, pushed, or
-published until explicit release authorization.
+## [0.2.0] - 2026-07-21
 
 ### Added
 
@@ -31,7 +28,8 @@ published until explicit release authorization.
 - Added immutable disk-format-2 and retrieval golden fixtures, generators, and
   synchronization checks.
 - Added retrieval benchmarks, load and restart/restore soak gates, retrieval
-  proof fuzzing, and local release evidence.
+  proof fuzzing, in-flight write interruption recovery, and local release
+  evidence.
 
 ### Fixed
 
@@ -39,7 +37,6 @@ published until explicit release authorization.
   OpenAPI and JSON Schema assets inside the crate.
 - Reused the packaged contract constants from the CLI MCP adapter and included
   the engine compatibility fixture in its crate tarball.
-
 - Added a release-readiness audit that rejects compile-time assets outside a
   crate or missing from its generated `cargo package` file list.
 

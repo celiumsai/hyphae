@@ -25,9 +25,10 @@ Rust. Its base deployment is one native `hyphae` executable and one data
 directory. KV, structured query, recovery, and verification work offline
 without a database, cache, cloud service, embedding provider, or LLM.
 
-**Current source version:** `0.2.0` (unpublished release candidate). The latest
-published release remains `0.1.0`; no `0.2.0` tag, GitHub update, or package
-publication exists until explicit release authorization.
+**Release version:** `0.2.0`. This release adds durable vector spaces,
+provider-free lexical retrieval, deterministic hybrid fusion, and portable
+offline-verifiable retrieval proofs while preserving the one-binary,
+one-data-directory product boundary.
 
 ## What Hyphae does
 
@@ -60,18 +61,22 @@ surface differences, default limits, and deliberate non-capabilities.
 
 ## Install
 
-Until `0.2.0` is authorized and published, build the candidate from this
-checkout:
+After the crates.io publication completes, install the single native binary:
 
 ```bash
-cargo build --release --locked -p hyphae-cli
+cargo install hyphae-cli --version 0.2.0 --locked
 hyphae version --json
 ```
 
-For the published `0.1.0` binary or archives, use crates.io or the
+Embed the engine with an exact product-version requirement:
+
+```bash
+cargo add hyphae-engine@=0.2.0
+```
+
+After the GitHub release workflow completes, native archives, checksums, SBOMs,
+provenance, signatures, and attestations are attached to the
 [latest GitHub release](https://github.com/celiumsai/hyphae/releases/latest).
-The `0.2.0` publication command will become valid only after release
-authorization.
 
 ## Five-minute local flow
 
@@ -107,7 +112,7 @@ application
                                             ▼
                          engine: documents / query / proof
                               │                  │
-                   optional exact retrieval     │
+                 durable exact/lexical/hybrid   │
                               │                  ▼
                               └──── append-only durable log
                                       │        │
@@ -143,7 +148,7 @@ and run with Hyphae absent.
 | [`hyphae-engine`](https://crates.io/crates/hyphae-engine) | Recommended embeddable facade | [docs.rs](https://docs.rs/hyphae-engine) |
 | [`hyphae-storage`](https://crates.io/crates/hyphae-storage) | Durable log, recovery, snapshots, and backups | [docs.rs](https://docs.rs/hyphae-storage) |
 | [`hyphae-query`](https://crates.io/crates/hyphae-query) | Deterministic structured query | [docs.rs](https://docs.rs/hyphae-query) |
-| [`hyphae-retrieval`](https://crates.io/crates/hyphae-retrieval) | Exact provider-neutral vector retrieval | [docs.rs](https://docs.rs/hyphae-retrieval) |
+| [`hyphae-retrieval`](https://crates.io/crates/hyphae-retrieval) | Deterministic exact, lexical, and hybrid retrieval | [docs.rs](https://docs.rs/hyphae-retrieval) |
 | [`hyphae-contracts`](https://crates.io/crates/hyphae-contracts) | Versioned `/v1` models and embedded schemas | [docs.rs](https://docs.rs/hyphae-contracts) |
 | [`hyphae-client`](https://crates.io/crates/hyphae-client) | Bounded async Rust HTTP client | [docs.rs](https://docs.rs/hyphae-client) |
 | [`hyphae-server`](https://crates.io/crates/hyphae-server) | Loopback-first `/v1` server | [docs.rs](https://docs.rs/hyphae-server) |
@@ -201,7 +206,7 @@ rustdoc, contracts, documentation, dependency policy, secret scanning,
 cross-platform packages, fuzzing, and recovery stress.
 
 ```console
-cargo fmt --all -- --check
+cargo fmt --all --check
 cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 cargo test --workspace --all-features --locked
 cargo doc --workspace --all-features --no-deps --locked
