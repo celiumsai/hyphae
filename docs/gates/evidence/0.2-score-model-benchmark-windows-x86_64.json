@@ -1,0 +1,56 @@
+{
+  "decision": {
+    "reasons": [
+      "integer-only canonical scoring after ingestion",
+      "two bytes per vector element",
+      "ranking quality measured against the f64 brute-force oracle",
+      "portable proof reexecution without implicit floating-point bytes"
+    ],
+    "selected": "q15-i16-cosine-nanos"
+  },
+  "environment": {
+    "implementation": "CPython",
+    "machine": "AMD64",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.15"
+  },
+  "models": [
+    {
+      "deterministic_integer_scoring": false,
+      "elapsed_seconds": 1.027917,
+      "element_bytes": 4,
+      "mean_top_k_overlap": 1.0,
+      "name": "f32-f64-cosine",
+      "top_1_agreement": 1.0
+    },
+    {
+      "deterministic_integer_scoring": true,
+      "elapsed_seconds": 1.000777,
+      "element_bytes": 2,
+      "mean_top_k_overlap": 1.0,
+      "name": "q15-i16-cosine-nanos",
+      "top_1_agreement": 1.0
+    },
+    {
+      "deterministic_integer_scoring": true,
+      "elapsed_seconds": 1.143243,
+      "element_bytes": 4,
+      "mean_top_k_overlap": 1.0,
+      "name": "q6-i32-cosine-nanos",
+      "top_1_agreement": 1.0
+    }
+  ],
+  "oracle": {
+    "elapsed_seconds": 1.27067,
+    "name": "f64-cosine"
+  },
+  "parameters": {
+    "candidates": 2048,
+    "dimensions": 128,
+    "queries": 32,
+    "score_scale": 1000000000,
+    "seed": 20260720,
+    "top_k": 10
+  },
+  "schema": "hyphae-score-model-benchmark-v1"
+}
