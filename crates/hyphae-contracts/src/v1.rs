@@ -90,6 +90,28 @@ pub struct ApiLimitsV1 {
     pub witness_bytes: u64,
     /// Maximum serialized JSON response bytes.
     pub response_bytes: u64,
+    /// Maximum dimensions in one durable vector space.
+    pub vector_dimensions: u64,
+    /// Maximum vectors inspected by one exact retrieval.
+    pub retrieval_candidates: u64,
+    /// Maximum aggregate candidate key and vector bytes loaded.
+    pub retrieval_candidate_bytes: u64,
+    /// Maximum matches returned by one retrieval.
+    pub retrieval_results: u64,
+    /// Maximum requested retrieval timeout.
+    pub retrieval_timeout_ms: u64,
+    /// Maximum canonical retrieval-proof bytes before base64 transport.
+    pub retrieval_proof_bytes: u64,
+    /// Maximum durable documents inspected by one lexical retrieval.
+    pub lexical_documents: u64,
+    /// Maximum normalized tokens processed by one lexical retrieval.
+    pub lexical_tokens: u64,
+    /// Maximum matching lexical candidates retained before ranking.
+    pub lexical_candidates: u64,
+    /// Maximum matches returned by lexical or hybrid retrieval.
+    pub lexical_results: u64,
+    /// Maximum requested lexical retrieval timeout.
+    pub lexical_timeout_ms: u64,
 }
 
 /// Liveness or readiness response.
@@ -138,6 +160,414 @@ pub struct DeleteRequestV1 {
 pub struct GetRequestV1 {
     /// Nonempty binary key encoded as hexadecimal.
     pub key_hex: String,
+}
+
+/// Canonical durable vector metric.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VectorMetricV1 {
+    /// Signed-Q15 integer cosine scored in nanos.
+    CosineQ15Nanos,
+}
+
+/// One immutable durable vector-space definition.
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct VectorSpaceV1 {
+    /// Stable lowercase vector-space name.
+    pub name: String,
+    /// Fixed number of signed-Q15 elements.
+    pub dimension: u16,
+    /// Canonical scoring metric.
+    pub metric: VectorMetricV1,
+}
+
+/// Atomic durable vector-space definition request.
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DefineVectorSpaceRequestV1 {
+    /// Optional UUID idempotency key; a `UUIDv7` is generated when absent.
+    #[schemars(with = "Option<uuid::Uuid>")]
+    pub transaction_id: Option<String>,
+    /// Immutable vector-space definition.
+    pub vector_space: VectorSpaceV1,
+}
+
+/// One canonical signed-Q15 vector on the wire.
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct VectorV1 {
+    /// Nonempty binary object key encoded as hexadecimal.
+    pub key_hex: String,
+    /// Signed-Q15 elements whose length must match the space dimension.
+    pub values: Vec<i16>,
+}
+
+/// Atomic durable vector upsert batch.
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PutVectorsRequestV1 {
+    /// Optional UUID idempotency key; a `UUIDv7` is generated when absent.
+    #[schemars(with = "Option<uuid::Uuid>")]
+    pub transaction_id: Option<String>,
+    /// Existing vector-space name.
+    pub vector_space: String,
+    /// Nonempty atomic vector batch.
+    pub vectors: Vec<VectorV1>,
+}
+
+/// Atomic durable vector deletion batch.
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DeleteVectorsRequestV1 {
+    /// Optional UUID idempotency key; a `UUIDv7` is generated when absent.
+    #[schemars(with = "Option<uuid::Uuid>")]
+    pub transaction_id: Option<String>,
+    /// Existing vector-space name.
+    pub vector_space: String,
+    /// Nonempty binary object keys encoded as hexadecimal.
+    pub keys_hex: Vec<String>,
+}
+
+/// Durable exact-retrieval request under reference semantics v2.
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExactRetrievalRequestV1 {
+    /// Existing vector-space name.
+    pub vector_space: String,
+    /// Canonical signed-Q15 query vector.
+    pub query: Vec<i16>,
+    /// Maximum returned matches.
+    pub limit: u64,
+    /// Inclusive minimum canonical cosine score.
+    pub minimum_score_nanos: i64,
+    /// Minimum canonical best/runner-up margin.
+    pub minimum_margin_nanos: u64,
+    /// Optional per-request timeout bounded by server policy.
+    pub timeout_ms: Option<u64>,
+}
+
+/// One canonical exact-retrieval match.
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExactRetrievalMatchV1 {
+    /// Binary object key encoded as hexadecimal.
+    pub key_hex: String,
+    /// Canonical signed integer cosine score.
+    pub score_nanos: i64,
+}
+
+/// Stable normal exact-retrieval abstention reason.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExactAbstentionReasonV1 {
+    /// The selected space contains no vectors.
+    NoCandidates,
+    /// The best score is below the request threshold.
+    BelowThreshold,
+    /// The best/runner-up margin is insufficient.
+    Ambiguous,
+}
+
+/// Stable exact-retrieval abstention evidence.
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExactAbstentionV1 {
+    /// Stable reason.
+    pub reason: ExactAbstentionReasonV1,
+    /// Best score when a candidate exists.
+    pub best_score_nanos: Option<i64>,
+    /// Runner-up score when one exists.
+    pub runner_up_score_nanos: Option<i64>,
+    /// Global candidates inspected.
+    pub scanned_candidates: u64,
+}
+
+/// Complete durable exact-retrieval outcome.
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(tag = "status", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ExactRetrievalOutcomeV1 {
+    /// Accepted globally ranked matches.
+    Matches {
+        /// Final canonical matches.
+        matches: Vec<ExactRetrievalMatchV1>,
+        /// Global candidates inspected.
+        scanned_candidates: u64,
+    },
+    /// Typed normal abstention.
+    Abstained {
+        /// Complete abstention evidence.
+        abstention: ExactAbstentionV1,
+    },
+}
+
+/// Portable retrieval proof plus its downloadable witness reference.
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct RetrievalProofV1 {
+    /// Fixed encoding identifier `base64`.
+    pub encoding: String,
+    /// Canonical `.hyrproof` bytes in standard padded base64.
+    pub data: String,
+    /// Canonical proof digest as hexadecimal.
+    pub proof_digest: String,
+    /// Caller-pinnable retrieval anchor digest as hexadecimal.
+    pub anchor_digest: String,
+    /// Snapshot/log checkpoint sequence.
+    pub checkpoint_sequence: u64,
+    /// Commit digest as hexadecimal, absent for empty history.
+    pub checkpoint_digest: Option<String>,
+    /// Canonical logical snapshot digest as hexadecimal.
+    pub snapshot_digest: String,
+    /// Authenticated endpoint for the complete offline witness.
+    pub witness: WitnessV1,
+}
+
+/// Proof-bearing durable exact-retrieval response.
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExactRetrievalResponseV1 {
+    /// Complete matches or typed abstention.
+    pub outcome: ExactRetrievalOutcomeV1,
+    /// Canonical retrieval proof and witness identity.
+    pub proof: RetrievalProofV1,
+}
+
+/// One configured field in an immutable lexical-index definition.
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct LexicalFieldV1 {
+    /// Nonempty exact object path.
+    pub path: Vec<String>,
+    /// Positive field weight in millionths.
+    pub weight_micros: u32,
+}
+
+/// One immutable provider-free lexical-index definition.
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct LexicalIndexV1 {
+    /// Stable lowercase index name.
+    pub name: String,
+    /// Nonempty unique fields; the server canonicalizes path order.
+    pub fields: Vec<LexicalFieldV1>,
+}
+
+/// Atomic durable lexical-index definition request.
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DefineLexicalIndexRequestV1 {
+    /// Optional UUID idempotency key; a `UUIDv7` is generated when absent.
+    #[schemars(with = "Option<uuid::Uuid>")]
+    pub transaction_id: Option<String>,
+    /// Immutable lexical-index definition.
+    pub lexical_index: LexicalIndexV1,
+}
+
+/// Durable provider-free lexical retrieval request under semantics v1.
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct LexicalRetrievalRequestV1 {
+    /// Existing lexical-index name.
+    pub lexical_index: String,
+    /// UTF-8 query analyzed by tokenizer v1.
+    pub query: String,
+    /// Maximum returned matches.
+    pub limit: u64,
+    /// Optional per-request timeout bounded by server policy.
+    pub timeout_ms: Option<u64>,
+}
+
+/// One configured-field contribution to a lexical term score.
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct LexicalFieldContributionV1 {
+    /// Canonical exact field path.
+    pub path: Vec<String>,
+    /// Raw term frequency in this field.
+    pub term_frequency: u64,
+    /// Normalized field token length.
+    pub field_length: u64,
+}
+
+/// One canonical query-term contribution to a lexical result.
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct LexicalTermContributionV1 {
+    /// Canonical tokenizer-v1 token.
+    pub token: String,
+    /// Corpus document frequency.
+    pub document_frequency: u64,
+    /// Quantized BM25F contribution.
+    pub score_nanos: i64,
+    /// Configured fields in canonical path order.
+    pub fields: Vec<LexicalFieldContributionV1>,
+}
+
+/// One canonical lexical retrieval match.
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct LexicalRetrievalMatchV1 {
+    /// Binary object key encoded as hexadecimal.
+    pub key_hex: String,
+    /// Canonical BM25F score in nanos.
+    pub score_nanos: i64,
+    /// Deterministic per-term explanation.
+    pub terms: Vec<LexicalTermContributionV1>,
+}
+
+/// Stable normal lexical abstention reason.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LexicalAbstentionReasonV1 {
+    /// No document contains a normalized query token.
+    NoCandidates,
+}
+
+/// Stable lexical abstention evidence.
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct LexicalAbstentionV1 {
+    /// Stable reason.
+    pub reason: LexicalAbstentionReasonV1,
+    /// Durable documents inspected.
+    pub scanned_documents: u64,
+    /// Canonical unique normalized query tokens.
+    pub query_tokens: Vec<String>,
+}
+
+/// Complete durable lexical retrieval outcome.
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(tag = "status", rename_all = "snake_case", deny_unknown_fields)]
+pub enum LexicalRetrievalOutcomeV1 {
+    /// Accepted globally ranked matches.
+    Matches {
+        /// Final canonical matches.
+        matches: Vec<LexicalRetrievalMatchV1>,
+        /// Durable documents inspected.
+        scanned_documents: u64,
+        /// Documents containing at least one query token.
+        matched_documents: u64,
+        /// Canonical unique normalized query tokens.
+        query_tokens: Vec<String>,
+    },
+    /// Typed normal abstention.
+    Abstained {
+        /// Complete abstention evidence.
+        abstention: LexicalAbstentionV1,
+    },
+}
+
+/// Proof-bearing durable lexical retrieval response.
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct LexicalRetrievalResponseV1 {
+    /// Complete matches or typed abstention.
+    pub outcome: LexicalRetrievalOutcomeV1,
+    /// Canonical retrieval proof and witness identity.
+    pub proof: RetrievalProofV1,
+}
+
+/// Complete hybrid retrieval request under deterministic RRF semantics v1.
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct HybridRetrievalRequestV1 {
+    /// Complete lexical branch request and candidate limit.
+    pub lexical: LexicalRetrievalRequestV1,
+    /// Complete exact-vector branch request and candidate limit.
+    pub vector: ExactRetrievalRequestV1,
+    /// Positive lexical RRF weight in `1..=1_000_000`.
+    pub lexical_weight: u32,
+    /// Positive vector RRF weight in `1..=1_000_000`.
+    pub vector_weight: u32,
+    /// Maximum final matches after deduplication and fusion.
+    pub limit: u64,
+}
+
+/// Preserved reason for one absent hybrid branch.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HybridBranchAbsenceV1 {
+    /// Lexical branch had no candidates.
+    LexicalNoCandidates,
+    /// Exact-vector branch had no candidates.
+    VectorNoCandidates,
+    /// Exact-vector branch was below its threshold.
+    VectorBelowThreshold,
+    /// Exact-vector branch was ambiguous under margin policy.
+    VectorAmbiguous,
+}
+
+/// Full deterministic explanation for one hybrid result.
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct HybridExplanationV1 {
+    /// One-based lexical rank when present.
+    pub lexical_rank: Option<u64>,
+    /// Canonical lexical score when present.
+    pub lexical_score_nanos: Option<i64>,
+    /// One-based exact-vector rank when present.
+    pub vector_rank: Option<u64>,
+    /// Canonical exact-vector score when present.
+    pub vector_score_nanos: Option<i64>,
+    /// Integer lexical RRF contribution.
+    pub lexical_contribution: u64,
+    /// Integer vector RRF contribution.
+    pub vector_contribution: u64,
+    /// Checked contribution sum.
+    pub fusion_score: u64,
+    /// One-based final rank.
+    pub final_rank: u64,
+}
+
+/// One canonical hybrid retrieval match.
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct HybridRetrievalMatchV1 {
+    /// Binary object key encoded as hexadecimal.
+    pub key_hex: String,
+    /// Complete fusion explanation.
+    pub explanation: HybridExplanationV1,
+}
+
+/// Both hybrid branches abstained normally.
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct HybridAbstentionV1 {
+    /// Lexical branch absence.
+    pub lexical: HybridBranchAbsenceV1,
+    /// Exact-vector branch absence.
+    pub vector: HybridBranchAbsenceV1,
+}
+
+/// Complete deterministic hybrid retrieval outcome.
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(tag = "status", rename_all = "snake_case", deny_unknown_fields)]
+pub enum HybridRetrievalOutcomeV1 {
+    /// Fused or explicit single-modality matches.
+    Matches {
+        /// Final canonical matches.
+        matches: Vec<HybridRetrievalMatchV1>,
+        /// Preserved lexical absence.
+        lexical_absence: Option<HybridBranchAbsenceV1>,
+        /// Preserved exact-vector absence.
+        vector_absence: Option<HybridBranchAbsenceV1>,
+    },
+    /// Both branches abstained.
+    Abstained {
+        /// Complete branch abstention evidence.
+        abstention: HybridAbstentionV1,
+    },
+}
+
+/// Proof-bearing deterministic hybrid retrieval response.
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct HybridRetrievalResponseV1 {
+    /// Complete fused matches or typed abstention.
+    pub outcome: HybridRetrievalOutcomeV1,
+    /// Canonical retrieval proof and witness identity.
+    pub proof: RetrievalProofV1,
 }
 
 /// Durable commit receipt.

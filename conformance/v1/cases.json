@@ -6,31 +6,39 @@
       {
         "key_hex": "61",
         "value": {
+          "body": "offline agent memory",
           "group": "x",
           "payload": {
             "$hyphae_bytes_hex": "00ff"
           },
-          "score": 10
+          "score": 10,
+          "title": "Durable memory"
         }
       },
       {
         "key_hex": "62",
         "value": {
+          "body": "exact vector retrieval",
           "group": "x",
-          "score": 8
+          "score": 8,
+          "title": "Fast search"
         }
       },
       {
         "key_hex": "63",
         "value": {
+          "body": "durable storage",
           "group": null,
-          "score": 7
+          "score": 7,
+          "title": "Memory systems"
         }
       },
       {
         "key_hex": "64",
         "value": {
-          "score": 2
+          "body": "unrelated document",
+          "score": 2,
+          "title": "Quiet record"
         }
       }
     ]
@@ -101,6 +109,153 @@
       "62"
     ]
   },
+  "define_vector_space_request": {
+    "transaction_id": "018f0000-0000-7000-8000-000000000201",
+    "vector_space": {
+      "name": "semantic",
+      "dimension": 2,
+      "metric": "cosine_q15_nanos"
+    }
+  },
+  "invalid_put_vectors_request": {
+    "transaction_id": "018f0000-0000-7000-8000-000000000202",
+    "vector_space": "semantic",
+    "vectors": [
+      {
+        "key_hex": "61",
+        "values": [
+          32767,
+          0
+        ]
+      },
+      {
+        "key_hex": "62",
+        "values": [
+          32767
+        ]
+      }
+    ]
+  },
+  "put_vectors_request": {
+    "transaction_id": "018f0000-0000-7000-8000-000000000203",
+    "vector_space": "semantic",
+    "vectors": [
+      {
+        "key_hex": "61",
+        "values": [
+          32767,
+          0
+        ]
+      },
+      {
+        "key_hex": "62",
+        "values": [
+          0,
+          32767
+        ]
+      },
+      {
+        "key_hex": "63",
+        "values": [
+          -32767,
+          0
+        ]
+      }
+    ]
+  },
+  "delete_vectors_request": {
+    "transaction_id": "018f0000-0000-7000-8000-000000000205",
+    "vector_space": "semantic",
+    "keys_hex": [
+      "62"
+    ]
+  },
+  "exact_retrieval_request": {
+    "vector_space": "semantic",
+    "query": [
+      32767,
+      0
+    ],
+    "limit": 3,
+    "minimum_score_nanos": -1000000000,
+    "minimum_margin_nanos": 0,
+    "timeout_ms": 5000
+  },
+  "ambiguous_exact_retrieval_request": {
+    "vector_space": "semantic",
+    "query": [
+      23170,
+      23170
+    ],
+    "limit": 3,
+    "minimum_score_nanos": -1000000000,
+    "minimum_margin_nanos": 1,
+    "timeout_ms": 5000
+  },
+  "wrong_dimension_exact_retrieval_request": {
+    "vector_space": "semantic",
+    "query": [
+      32767
+    ],
+    "limit": 3,
+    "minimum_score_nanos": -1000000000,
+    "minimum_margin_nanos": 0,
+    "timeout_ms": 5000
+  },
+  "define_lexical_index_request": {
+    "transaction_id": "018f0000-0000-7000-8000-000000000204",
+    "lexical_index": {
+      "name": "content",
+      "fields": [
+        {
+          "path": [
+            "title"
+          ],
+          "weight_micros": 2000000
+        },
+        {
+          "path": [
+            "body"
+          ],
+          "weight_micros": 1000000
+        }
+      ]
+    }
+  },
+  "lexical_retrieval_request": {
+    "lexical_index": "content",
+    "query": "durable memory",
+    "limit": 3,
+    "timeout_ms": 5000
+  },
+  "invalid_lexical_retrieval_request": {
+    "lexical_index": "content",
+    "query": "---",
+    "limit": 3,
+    "timeout_ms": 5000
+  },
+  "hybrid_retrieval_request": {
+    "lexical": {
+      "lexical_index": "content",
+      "query": "durable memory",
+      "limit": 3,
+      "timeout_ms": 5000
+    },
+    "vector": {
+      "vector_space": "semantic",
+      "query": [
+        32767,
+        0
+      ],
+      "limit": 3,
+      "minimum_score_nanos": -1000000000,
+      "minimum_margin_nanos": 0,
+      "timeout_ms": 5000
+    },
+    "lexical_weight": 1,
+    "vector_weight": 1,
+    "limit": 3
+  },
   "expected": {
     "first_page_keys": [
       "61",
@@ -111,6 +266,14 @@
       "64"
     ],
     "matched_records": 4,
+    "exact_retrieval_keys": [
+      "61",
+      "62",
+      "63"
+    ],
+    "lexical_first_key": "61",
+    "hybrid_first_key": "61",
+    "ambiguous_exact_reason": "ambiguous",
     "aggregation": {
       "grouped": true,
       "groups": [

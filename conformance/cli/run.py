@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import subprocess
@@ -98,6 +99,90 @@ second_page = call(
 )
 assert [record["key_hex"] for record in second_page["rows"]] == FIXTURE["expected"]["second_page_keys"]
 assert second_page.get("next_cursor") is None
+
+assert call("define-vector-space", FIXTURE["define_vector_space_request"])["status"] == "committed"
+assert call("define-vector-space", FIXTURE["define_vector_space_request"])["status"] == "existing"
+try:
+    call("put-vectors", FIXTURE["invalid_put_vectors_request"])
+except subprocess.CalledProcessError as error:
+    assert "invalid_request" in error.stderr
+else:
+    raise AssertionError("mixed-validity vector batch was accepted")
+assert call("put-vectors", FIXTURE["put_vectors_request"])["status"] == "committed"
+assert call("define-lexical-index", FIXTURE["define_lexical_index_request"])["status"] == "committed"
+
+exact = call("retrieve-exact", FIXTURE["exact_retrieval_request"])
+assert exact["outcome"]["status"] == "matches"
+assert [item["key_hex"] for item in exact["outcome"]["matches"]] == FIXTURE["expected"]["exact_retrieval_keys"]
+with tempfile.TemporaryDirectory() as directory:
+    proof_json_path = Path(directory) / "proof.json"
+    proof_binary_path = Path(directory) / "proof.hyrproof"
+    witness_path = Path(directory) / "snapshot.hysnap"
+    proof_json_path.write_text(json.dumps(exact["proof"]), encoding="utf-8")
+    proof_binary_path.write_bytes(base64.b64decode(exact["proof"]["data"], validate=True))
+    completed = subprocess.run(
+        [
+            os.environ["HYPHAE_CLI_BIN"],
+            "remote",
+            "--base-url",
+            os.environ["HYPHAE_BASE_URL"],
+            "witness",
+            "--proof",
+            str(proof_json_path),
+            "--out",
+            str(witness_path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    metadata = json.loads(completed.stdout)
+    assert metadata["file_bytes"] == witness_path.stat().st_size
+    verified = subprocess.run(
+        [
+            os.environ["HYPHAE_CLI_BIN"],
+            "verify-retrieval",
+            "--kind",
+            "exact",
+            "--proof",
+            str(proof_binary_path),
+            "--snapshot",
+            str(witness_path),
+            "--anchor",
+            exact["proof"]["anchor_digest"],
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    report = json.loads(verified.stdout)
+    assert report["status"] == "verified" and report["operation"] == "exact"
+ambiguous = call("retrieve-exact", FIXTURE["ambiguous_exact_retrieval_request"])
+assert ambiguous["outcome"]["status"] == "abstained"
+assert ambiguous["outcome"]["abstention"]["reason"] == FIXTURE["expected"]["ambiguous_exact_reason"]
+try:
+    call("retrieve-exact", FIXTURE["wrong_dimension_exact_retrieval_request"])
+except subprocess.CalledProcessError as error:
+    assert "invalid_request" in error.stderr
+else:
+    raise AssertionError("wrong-dimension query was accepted")
+
+lexical = call("retrieve-lexical", FIXTURE["lexical_retrieval_request"])
+assert lexical["outcome"]["status"] == "matches"
+assert lexical["outcome"]["matches"][0]["key_hex"] == FIXTURE["expected"]["lexical_first_key"]
+try:
+    call("retrieve-lexical", FIXTURE["invalid_lexical_retrieval_request"])
+except subprocess.CalledProcessError as error:
+    assert "invalid_request" in error.stderr
+else:
+    raise AssertionError("empty lexical query was accepted")
+
+hybrid = call("retrieve-hybrid", FIXTURE["hybrid_retrieval_request"])
+assert hybrid["outcome"]["status"] == "matches"
+assert hybrid["outcome"]["matches"][0]["key_hex"] == FIXTURE["expected"]["hybrid_first_key"]
+assert call("delete-vectors", FIXTURE["delete_vectors_request"])["status"] == "committed"
 
 call("delete", FIXTURE["delete_request"])
 assert call("get", {"key_hex": "62"})["found"] is False

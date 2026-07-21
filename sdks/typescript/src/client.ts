@@ -3,15 +3,26 @@
 import type {
   CapabilitiesV1,
   CommitReceiptV1,
+  DefineLexicalIndexRequestV1,
+  DefineVectorSpaceRequestV1,
   DeleteRequestV1,
+  DeleteVectorsRequestV1,
   ErrorV1,
+  ExactRetrievalRequestV1,
+  ExactRetrievalResponseV1,
   GetRequestV1,
   GetResponseV1,
   HealthV1,
+  HybridRetrievalRequestV1,
+  HybridRetrievalResponseV1,
+  LexicalRetrievalRequestV1,
+  LexicalRetrievalResponseV1,
   ProofV1,
   PutRequestV1,
+  PutVectorsRequestV1,
   QueryRequestV1,
   QueryResponseV1,
+  RetrievalProofV1,
 } from "./generated.js";
 import { parseHyphaeJson, stringifyHyphaeJson } from "./json.js";
 
@@ -125,7 +136,51 @@ export class HyphaeClient {
     return this.#json("v1/query", true, request);
   }
 
+  defineVectorSpace(request: DefineVectorSpaceRequestV1): Promise<ApiResponse<CommitReceiptV1>> {
+    return this.#json("v1/vector-spaces/define", true, request);
+  }
+
+  putVectors(request: PutVectorsRequestV1): Promise<ApiResponse<CommitReceiptV1>> {
+    return this.#json("v1/vectors/put", true, request);
+  }
+
+  deleteVectors(request: DeleteVectorsRequestV1): Promise<ApiResponse<CommitReceiptV1>> {
+    return this.#json("v1/vectors/delete", true, request);
+  }
+
+  retrieveExact(request: ExactRetrievalRequestV1): Promise<ApiResponse<ExactRetrievalResponseV1>> {
+    return this.#json("v1/retrieve/exact", true, request);
+  }
+
+  defineLexicalIndex(request: DefineLexicalIndexRequestV1): Promise<ApiResponse<CommitReceiptV1>> {
+    return this.#json("v1/lexical-indexes/define", true, request);
+  }
+
+  retrieveLexical(
+    request: LexicalRetrievalRequestV1,
+  ): Promise<ApiResponse<LexicalRetrievalResponseV1>> {
+    return this.#json("v1/retrieve/lexical", true, request);
+  }
+
+  retrieveHybrid(
+    request: HybridRetrievalRequestV1,
+  ): Promise<ApiResponse<HybridRetrievalResponseV1>> {
+    return this.#json("v1/retrieve/hybrid", true, request);
+  }
+
   async downloadWitness(proof: ProofV1): Promise<ApiResponse<Uint8Array>> {
+    return this.#downloadWitness(proof);
+  }
+
+  async downloadRetrievalWitness(
+    proof: RetrievalProofV1,
+  ): Promise<ApiResponse<Uint8Array>> {
+    return this.#downloadWitness(proof);
+  }
+
+  async #downloadWitness(
+    proof: ProofV1 | RetrievalProofV1,
+  ): Promise<ApiResponse<Uint8Array>> {
     const expectedPath = `/v1/witnesses/${proof.checkpoint_sequence}/${proof.snapshot_digest}`;
     if (proof.witness.path !== expectedPath) {
       throw new HyphaeClientError("proof contains a noncanonical witness reference");

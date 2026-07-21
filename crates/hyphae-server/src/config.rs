@@ -8,10 +8,13 @@ use std::{
 };
 
 use hyphae_contracts::v1::ApiLimitsV1;
+use hyphae_core::MAX_VECTOR_DIMENSIONS;
 use hyphae_engine::{
     MAX_DOCUMENT_BYTES, MAX_DOCUMENT_DEPTH, MAX_DOCUMENT_NODES, MAX_RESULT_PROOF_BYTES,
+    MAX_RETRIEVAL_PROOF_BYTES,
 };
 use hyphae_query::ExecutionLimits;
+use hyphae_retrieval::{ExactRetrievalLimits, LexicalLimits};
 use hyphae_storage::MAX_KEY_BYTES;
 use subtle::ConstantTimeEq;
 use thiserror::Error;
@@ -91,6 +94,10 @@ pub struct ServerLimits {
     pub witness_bytes: u64,
     /// Deterministic structured-query work, shape, result, and timeout limits.
     pub query: ExecutionLimits,
+    /// Durable exact-retrieval work, result, byte, and timeout limits.
+    pub exact_retrieval: ExactRetrievalLimits,
+    /// Provider-free lexical work, result, token, and timeout limits.
+    pub lexical_retrieval: LexicalLimits,
 }
 
 impl Default for ServerLimits {
@@ -106,6 +113,8 @@ impl Default for ServerLimits {
             proof_bytes: 16 * 1024 * 1024,
             witness_bytes: 512 * 1024 * 1024,
             query: ExecutionLimits::default(),
+            exact_retrieval: ExactRetrievalLimits::default(),
+            lexical_retrieval: LexicalLimits::default(),
         }
     }
 }
@@ -127,13 +136,22 @@ impl ServerLimits {
             self.query.max_sort_fields,
             self.query.max_group_fields,
             self.query.max_metrics,
+            self.exact_retrieval.max_returned,
+            self.lexical_retrieval.max_returned,
         ];
         if scalar_limits.contains(&0)
             || self.witness_bytes == 0
             || self.query.max_scanned_records == 0
             || self.query.max_matched_records == 0
+            || self.exact_retrieval.max_candidates == 0
+            || self.exact_retrieval.max_candidate_bytes == 0
+            || self.lexical_retrieval.max_documents == 0
+            || self.lexical_retrieval.max_tokens == 0
+            || self.lexical_retrieval.max_candidates == 0
             || self.request_body_timeout.is_zero()
             || self.query.timeout.is_zero()
+            || self.exact_retrieval.timeout.is_zero()
+            || self.lexical_retrieval.timeout.is_zero()
         {
             return Err(ServerConfigError::ZeroLimit);
         }
@@ -149,9 +167,10 @@ impl ServerLimits {
                 actual: self.json_nodes,
             });
         }
-        if u64::try_from(self.proof_bytes).unwrap_or(u64::MAX) > MAX_RESULT_PROOF_BYTES {
+        let maximum_proof_bytes = MAX_RESULT_PROOF_BYTES.min(MAX_RETRIEVAL_PROOF_BYTES);
+        if u64::try_from(self.proof_bytes).unwrap_or(u64::MAX) > maximum_proof_bytes {
             return Err(ServerConfigError::ProofLimitTooLarge {
-                maximum: MAX_RESULT_PROOF_BYTES,
+                maximum: maximum_proof_bytes,
                 actual: u64::try_from(self.proof_bytes).unwrap_or(u64::MAX),
             });
         }
@@ -181,6 +200,17 @@ impl ServerLimits {
             proof_bytes: usize_to_u64(self.proof_bytes),
             witness_bytes: self.witness_bytes,
             response_bytes: usize_to_u64(self.response_bytes),
+            vector_dimensions: usize_to_u64(MAX_VECTOR_DIMENSIONS),
+            retrieval_candidates: self.exact_retrieval.max_candidates,
+            retrieval_candidate_bytes: self.exact_retrieval.max_candidate_bytes,
+            retrieval_results: usize_to_u64(self.exact_retrieval.max_returned),
+            retrieval_timeout_ms: duration_millis(self.exact_retrieval.timeout),
+            retrieval_proof_bytes: usize_to_u64(self.proof_bytes),
+            lexical_documents: self.lexical_retrieval.max_documents,
+            lexical_tokens: self.lexical_retrieval.max_tokens,
+            lexical_candidates: self.lexical_retrieval.max_candidates,
+            lexical_results: usize_to_u64(self.lexical_retrieval.max_returned),
+            lexical_timeout_ms: duration_millis(self.lexical_retrieval.timeout),
         }
     }
 }

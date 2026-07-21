@@ -2,7 +2,7 @@
 
 `@celiums/hyphae` is the bounded ESM client for API v1. It requires Node.js 20
 or newer, uses the runtime `fetch`, and has no runtime package dependencies.
-The private `0.1.0` candidate is not published until release authorization.
+The `0.2.0` candidate is not published until release authorization.
 
 ## Build from this repository
 

@@ -1,0 +1,22 @@
+{
+  "lexical": {
+    "lexical_index": "content",
+    "query": "durable memory",
+    "limit": 2,
+    "timeout_ms": 5000
+  },
+  "vector": {
+    "vector_space": "semantic",
+    "query": [
+      32767,
+      0
+    ],
+    "limit": 2,
+    "minimum_score_nanos": -1000000000,
+    "minimum_margin_nanos": 0,
+    "timeout_ms": 5000
+  },
+  "lexical_weight": 1,
+  "vector_weight": 1,
+  "limit": 2
+}

@@ -5,8 +5,11 @@
 use std::{env, error::Error, fs, path::PathBuf};
 
 use hyphae_contracts::v1::{
-    CapabilitiesV1, CommitReceiptV1, DeleteRequestV1, ErrorV1, GetRequestV1, GetResponseV1,
-    HealthV1, ProofV1, PutRequestV1, QueryRequestV1, QueryResponseV1,
+    CapabilitiesV1, CommitReceiptV1, DefineLexicalIndexRequestV1, DefineVectorSpaceRequestV1,
+    DeleteRequestV1, DeleteVectorsRequestV1, ErrorV1, ExactRetrievalRequestV1,
+    ExactRetrievalResponseV1, GetRequestV1, GetResponseV1, HealthV1, HybridRetrievalRequestV1,
+    HybridRetrievalResponseV1, LexicalRetrievalRequestV1, LexicalRetrievalResponseV1, ProofV1,
+    PutRequestV1, PutVectorsRequestV1, QueryRequestV1, QueryResponseV1, RetrievalProofV1,
 };
 use schemars::{JsonSchema, SchemaGenerator};
 
@@ -27,6 +30,20 @@ fn main() -> Result<(), Box<dyn Error>> {
     write::<QueryRequestV1>(&directory, "query-request-v1.schema.json")?;
     write::<QueryResponseV1>(&directory, "query-response-v1.schema.json")?;
     write::<ProofV1>(&directory, "proof-v1.schema.json")?;
+    write::<DefineVectorSpaceRequestV1>(&directory, "define-vector-space-request-v1.schema.json")?;
+    write::<PutVectorsRequestV1>(&directory, "put-vectors-request-v1.schema.json")?;
+    write::<DeleteVectorsRequestV1>(&directory, "delete-vectors-request-v1.schema.json")?;
+    write::<ExactRetrievalRequestV1>(&directory, "exact-retrieval-request-v1.schema.json")?;
+    write::<ExactRetrievalResponseV1>(&directory, "exact-retrieval-response-v1.schema.json")?;
+    write::<RetrievalProofV1>(&directory, "retrieval-proof-v1.schema.json")?;
+    write::<DefineLexicalIndexRequestV1>(
+        &directory,
+        "define-lexical-index-request-v1.schema.json",
+    )?;
+    write::<LexicalRetrievalRequestV1>(&directory, "lexical-retrieval-request-v1.schema.json")?;
+    write::<LexicalRetrievalResponseV1>(&directory, "lexical-retrieval-response-v1.schema.json")?;
+    write::<HybridRetrievalRequestV1>(&directory, "hybrid-retrieval-request-v1.schema.json")?;
+    write::<HybridRetrievalResponseV1>(&directory, "hybrid-retrieval-response-v1.schema.json")?;
     Ok(())
 }
 

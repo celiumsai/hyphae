@@ -99,6 +99,36 @@
           "format": "uint64",
           "minimum": 0
         },
+        "lexical_candidates": {
+          "description": "Maximum matching lexical candidates retained before ranking.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "lexical_documents": {
+          "description": "Maximum durable documents inspected by one lexical retrieval.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "lexical_results": {
+          "description": "Maximum matches returned by lexical or hybrid retrieval.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "lexical_timeout_ms": {
+          "description": "Maximum requested lexical retrieval timeout.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "lexical_tokens": {
+          "description": "Maximum normalized tokens processed by one lexical retrieval.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
         "matched_records": {
           "description": "Maximum matched records retained by one query.",
           "type": "integer",
@@ -147,6 +177,36 @@
           "format": "uint64",
           "minimum": 0
         },
+        "retrieval_candidate_bytes": {
+          "description": "Maximum aggregate candidate key and vector bytes loaded.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "retrieval_candidates": {
+          "description": "Maximum vectors inspected by one exact retrieval.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "retrieval_proof_bytes": {
+          "description": "Maximum canonical retrieval-proof bytes before base64 transport.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "retrieval_results": {
+          "description": "Maximum matches returned by one retrieval.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "retrieval_timeout_ms": {
+          "description": "Maximum requested retrieval timeout.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
         "scanned_records": {
           "description": "Maximum records inspected globally by one query.",
           "type": "integer",
@@ -155,6 +215,12 @@
         },
         "sort_fields": {
           "description": "Maximum explicit sort fields.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "vector_dimensions": {
+          "description": "Maximum dimensions in one durable vector space.",
           "type": "integer",
           "format": "uint64",
           "minimum": 0
@@ -188,7 +254,18 @@
         "query_timeout_ms",
         "proof_bytes",
         "witness_bytes",
-        "response_bytes"
+        "response_bytes",
+        "vector_dimensions",
+        "retrieval_candidates",
+        "retrieval_candidate_bytes",
+        "retrieval_results",
+        "retrieval_timeout_ms",
+        "retrieval_proof_bytes",
+        "lexical_documents",
+        "lexical_tokens",
+        "lexical_candidates",
+        "lexical_results",
+        "lexical_timeout_ms"
       ]
     }
   }

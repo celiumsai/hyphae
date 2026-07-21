@@ -1,0 +1,298 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LexicalRetrievalResponseV1",
+  "description": "Proof-bearing durable lexical retrieval response.",
+  "type": "object",
+  "properties": {
+    "outcome": {
+      "description": "Complete matches or typed abstention.",
+      "$ref": "#/$defs/LexicalRetrievalOutcomeV1"
+    },
+    "proof": {
+      "description": "Canonical retrieval proof and witness identity.",
+      "$ref": "#/$defs/RetrievalProofV1"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "outcome",
+    "proof"
+  ],
+  "$defs": {
+    "LexicalAbstentionReasonV1": {
+      "description": "Stable normal lexical abstention reason.",
+      "oneOf": [
+        {
+          "description": "No document contains a normalized query token.",
+          "type": "string",
+          "const": "no_candidates"
+        }
+      ]
+    },
+    "LexicalAbstentionV1": {
+      "description": "Stable lexical abstention evidence.",
+      "type": "object",
+      "properties": {
+        "query_tokens": {
+          "description": "Canonical unique normalized query tokens.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reason": {
+          "description": "Stable reason.",
+          "$ref": "#/$defs/LexicalAbstentionReasonV1"
+        },
+        "scanned_documents": {
+          "description": "Durable documents inspected.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "reason",
+        "scanned_documents",
+        "query_tokens"
+      ]
+    },
+    "LexicalFieldContributionV1": {
+      "description": "One configured-field contribution to a lexical term score.",
+      "type": "object",
+      "properties": {
+        "field_length": {
+          "description": "Normalized field token length.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "path": {
+          "description": "Canonical exact field path.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "term_frequency": {
+          "description": "Raw term frequency in this field.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "term_frequency",
+        "field_length"
+      ]
+    },
+    "LexicalRetrievalMatchV1": {
+      "description": "One canonical lexical retrieval match.",
+      "type": "object",
+      "properties": {
+        "key_hex": {
+          "description": "Binary object key encoded as hexadecimal.",
+          "type": "string"
+        },
+        "score_nanos": {
+          "description": "Canonical BM25F score in nanos.",
+          "type": "integer",
+          "format": "int64"
+        },
+        "terms": {
+          "description": "Deterministic per-term explanation.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LexicalTermContributionV1"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "key_hex",
+        "score_nanos",
+        "terms"
+      ]
+    },
+    "LexicalRetrievalOutcomeV1": {
+      "description": "Complete durable lexical retrieval outcome.",
+      "oneOf": [
+        {
+          "description": "Accepted globally ranked matches.",
+          "type": "object",
+          "properties": {
+            "matched_documents": {
+              "description": "Documents containing at least one query token.",
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0
+            },
+            "matches": {
+              "description": "Final canonical matches.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/LexicalRetrievalMatchV1"
+              }
+            },
+            "query_tokens": {
+              "description": "Canonical unique normalized query tokens.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "scanned_documents": {
+              "description": "Durable documents inspected.",
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0
+            },
+            "status": {
+              "type": "string",
+              "const": "matches"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "matches",
+            "scanned_documents",
+            "matched_documents",
+            "query_tokens"
+          ]
+        },
+        {
+          "description": "Typed normal abstention.",
+          "type": "object",
+          "properties": {
+            "abstention": {
+              "description": "Complete abstention evidence.",
+              "$ref": "#/$defs/LexicalAbstentionV1"
+            },
+            "status": {
+              "type": "string",
+              "const": "abstained"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "abstention"
+          ]
+        }
+      ]
+    },
+    "LexicalTermContributionV1": {
+      "description": "One canonical query-term contribution to a lexical result.",
+      "type": "object",
+      "properties": {
+        "document_frequency": {
+          "description": "Corpus document frequency.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "fields": {
+          "description": "Configured fields in canonical path order.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LexicalFieldContributionV1"
+          }
+        },
+        "score_nanos": {
+          "description": "Quantized BM25F contribution.",
+          "type": "integer",
+          "format": "int64"
+        },
+        "token": {
+          "description": "Canonical tokenizer-v1 token.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "token",
+        "document_frequency",
+        "score_nanos",
+        "fields"
+      ]
+    },
+    "RetrievalProofV1": {
+      "description": "Portable retrieval proof plus its downloadable witness reference.",
+      "type": "object",
+      "properties": {
+        "anchor_digest": {
+          "description": "Caller-pinnable retrieval anchor digest as hexadecimal.",
+          "type": "string"
+        },
+        "checkpoint_digest": {
+          "description": "Commit digest as hexadecimal, absent for empty history.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "checkpoint_sequence": {
+          "description": "Snapshot/log checkpoint sequence.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "data": {
+          "description": "Canonical `.hyrproof` bytes in standard padded base64.",
+          "type": "string"
+        },
+        "encoding": {
+          "description": "Fixed encoding identifier `base64`.",
+          "type": "string"
+        },
+        "proof_digest": {
+          "description": "Canonical proof digest as hexadecimal.",
+          "type": "string"
+        },
+        "snapshot_digest": {
+          "description": "Canonical logical snapshot digest as hexadecimal.",
+          "type": "string"
+        },
+        "witness": {
+          "description": "Authenticated endpoint for the complete offline witness.",
+          "$ref": "#/$defs/WitnessV1"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "encoding",
+        "data",
+        "proof_digest",
+        "anchor_digest",
+        "checkpoint_sequence",
+        "snapshot_digest",
+        "witness"
+      ]
+    },
+    "WitnessV1": {
+      "description": "Download reference for one canonical logical snapshot.",
+      "type": "object",
+      "properties": {
+        "file_bytes": {
+          "description": "Complete snapshot file length.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "path": {
+          "description": "Versioned relative HTTP path.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "file_bytes"
+      ]
+    }
+  }
+}

@@ -10,7 +10,7 @@ Optional public-contract adapter between PliegoRS applications and the
 
 ```toml
 [dependencies]
-hyphae-pliegors = "0.1.0"
+hyphae-pliegors = "0.2.0"
 ```
 
 The crate depends on `hyphae-client`, not PliegoRS internals or Hyphae storage.

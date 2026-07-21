@@ -3,15 +3,19 @@
     {
       "key_hex": "616c706861",
       "value": {
+        "body": "offline agent memory",
         "group": "x",
-        "score": 10
+        "score": 10,
+        "title": "Durable memory"
       }
     },
     {
       "key_hex": "62657461",
       "value": {
+        "body": "exact vector retrieval",
         "group": "x",
-        "score": 20
+        "score": 20,
+        "title": "Fast search"
       }
     }
   ]

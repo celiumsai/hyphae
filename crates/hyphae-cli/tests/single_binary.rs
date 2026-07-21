@@ -3,12 +3,24 @@
 //! Black-box conformance for the autonomous single-binary experience.
 
 use std::{
+    collections::BTreeMap,
     error::Error,
     fs,
     path::{Path, PathBuf},
     process::Command,
+    time::Duration,
 };
 
+use hyphae_core::{Q15Vector, VectorSpaceDefinition, VectorSpaceName};
+use hyphae_engine::{
+    HyphaeEngine, write_exact_retrieval_proof, write_hybrid_retrieval_proof,
+    write_lexical_retrieval_proof,
+};
+use hyphae_query::{FieldPath, Record, Value};
+use hyphae_retrieval::{
+    ExactRetrievalLimits, ExactRetrievalRequest, HybridRequest, LexicalField,
+    LexicalIndexDefinition, LexicalLimits, LexicalRequest,
+};
 use uuid::Uuid;
 
 struct TestDirectory {
@@ -224,4 +236,159 @@ fn one_binary_backup_restore_and_doctor_are_offline() -> Result<(), Box<dyn Erro
     assert_eq!(retry["commit_digest"], committed["commit_digest"]);
     assert_eq!(run(&restored, &["doctor"])?["status"], "healthy");
     Ok(())
+}
+
+#[test]
+#[allow(clippy::too_many_lines)]
+fn one_binary_verifies_all_retrieval_proofs_offline() -> Result<(), Box<dyn Error>> {
+    let temporary = TestDirectory::create()?;
+    let data = temporary.path.join("data");
+    let mut opened = HyphaeEngine::open(&data)?;
+    opened.engine.put_records(
+        Uuid::now_v7(),
+        &[
+            retrieval_record(b"alpha", "Durable memory", "offline agent memory"),
+            retrieval_record(b"beta", "Fast search", "exact vector retrieval"),
+        ],
+    )?;
+    let vector_space = VectorSpaceName::new("semantic")?;
+    opened.engine.define_vector_space(
+        Uuid::now_v7(),
+        VectorSpaceDefinition::cosine(vector_space.clone(), 2)?,
+    )?;
+    opened.engine.put_vectors(
+        Uuid::now_v7(),
+        &vector_space,
+        &[
+            (b"alpha".to_vec(), Q15Vector::new(vec![32_767, 0])?),
+            (b"beta".to_vec(), Q15Vector::new(vec![0, 32_767])?),
+        ],
+    )?;
+    let lexical_index = VectorSpaceName::new("content")?;
+    opened.engine.define_lexical_index(
+        Uuid::now_v7(),
+        LexicalIndexDefinition::new(
+            lexical_index.clone(),
+            vec![
+                LexicalField {
+                    path: FieldPath::field("body"),
+                    weight_micros: 1_000_000,
+                },
+                LexicalField {
+                    path: FieldPath::field("title"),
+                    weight_micros: 2_000_000,
+                },
+            ],
+        )?,
+    )?;
+
+    let vector_request = ExactRetrievalRequest {
+        vector_space,
+        query: Q15Vector::new(vec![32_767, 0])?,
+        limit: 2,
+        minimum_score_nanos: -1_000_000_000,
+        minimum_margin_nanos: 0,
+    };
+    let lexical_request = LexicalRequest {
+        index: lexical_index,
+        query: "durable memory".to_owned(),
+        limit: 2,
+    };
+    let exact_limits = ExactRetrievalLimits {
+        max_candidates: 10,
+        max_candidate_bytes: 1_024,
+        max_returned: 10,
+        timeout: Duration::from_secs(1),
+    };
+    let lexical_limits = LexicalLimits {
+        max_documents: 10,
+        max_tokens: 1_000,
+        max_candidates: 10,
+        max_returned: 10,
+        timeout: Duration::from_secs(1),
+    };
+
+    let exact = opened
+        .engine
+        .retrieve_exact_with_proof(&vector_request, &exact_limits)?;
+    let lexical = opened
+        .engine
+        .retrieve_lexical_with_proof(&lexical_request, &lexical_limits)?;
+    let hybrid = opened.engine.retrieve_hybrid_with_proof(
+        &lexical_request,
+        &lexical_limits,
+        &vector_request,
+        &exact_limits,
+        &HybridRequest {
+            lexical_weight: 1,
+            vector_weight: 1,
+            limit: 2,
+        },
+    )?;
+
+    let exact_path = temporary.path.join("exact.hyrproof");
+    let lexical_path = temporary.path.join("lexical.hyrproof");
+    let hybrid_path = temporary.path.join("hybrid.hyrproof");
+    write_exact_retrieval_proof(&exact_path, &exact.proof)?;
+    write_lexical_retrieval_proof(&lexical_path, &lexical.proof)?;
+    write_hybrid_retrieval_proof(&hybrid_path, &hybrid.proof)?;
+
+    for (kind, proof_path, artifact_anchor, snapshot_path) in [
+        (
+            "exact",
+            exact_path,
+            exact.proof.anchor_digest(),
+            exact.snapshot.path,
+        ),
+        (
+            "lexical",
+            lexical_path,
+            lexical.proof.anchor_digest(),
+            lexical.snapshot.path,
+        ),
+        (
+            "hybrid",
+            hybrid_path,
+            hybrid.proof.anchor_digest(),
+            hybrid.snapshot.path,
+        ),
+    ] {
+        let proof = proof_path.to_string_lossy().into_owned();
+        let snapshot = snapshot_path.to_string_lossy().into_owned();
+        let anchor = encode_hex(&artifact_anchor);
+        let verified = run_without_data(&[
+            "verify-retrieval",
+            "--kind",
+            kind,
+            "--proof",
+            &proof,
+            "--snapshot",
+            &snapshot,
+            "--anchor",
+            &anchor,
+        ])?;
+        assert_eq!(verified["status"], "verified");
+        assert_eq!(verified["operation"], kind);
+    }
+    Ok(())
+}
+
+fn retrieval_record(key: &[u8], title: &str, body: &str) -> Record {
+    Record::new(
+        key,
+        Value::Object(BTreeMap::from([
+            ("body".to_owned(), Value::String(body.to_owned())),
+            ("title".to_owned(), Value::String(title.to_owned())),
+        ])),
+    )
+}
+
+fn encode_hex(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut encoded = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        encoded.push(char::from(HEX[usize::from(byte >> 4)]));
+        encoded.push(char::from(HEX[usize::from(byte & 0x0f)]));
+    }
+    encoded
 }

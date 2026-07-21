@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HybridRetrievalRequestV1",
+  "description": "Complete hybrid retrieval request under deterministic RRF semantics v1.",
+  "type": "object",
+  "properties": {
+    "lexical": {
+      "description": "Complete lexical branch request and candidate limit.",
+      "$ref": "#/$defs/LexicalRetrievalRequestV1"
+    },
+    "lexical_weight": {
+      "description": "Positive lexical RRF weight in `1..=1_000_000`.",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "limit": {
+      "description": "Maximum final matches after deduplication and fusion.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "vector": {
+      "description": "Complete exact-vector branch request and candidate limit.",
+      "$ref": "#/$defs/ExactRetrievalRequestV1"
+    },
+    "vector_weight": {
+      "description": "Positive vector RRF weight in `1..=1_000_000`.",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "lexical",
+    "vector",
+    "lexical_weight",
+    "vector_weight",
+    "limit"
+  ],
+  "$defs": {
+    "ExactRetrievalRequestV1": {
+      "description": "Durable exact-retrieval request under reference semantics v2.",
+      "type": "object",
+      "properties": {
+        "limit": {
+          "description": "Maximum returned matches.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "minimum_margin_nanos": {
+          "description": "Minimum canonical best/runner-up margin.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "minimum_score_nanos": {
+          "description": "Inclusive minimum canonical cosine score.",
+          "type": "integer",
+          "format": "int64"
+        },
+        "query": {
+          "description": "Canonical signed-Q15 query vector.",
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "int16",
+            "maximum": 32767,
+            "minimum": -32768
+          }
+        },
+        "timeout_ms": {
+          "description": "Optional per-request timeout bounded by server policy.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "vector_space": {
+          "description": "Existing vector-space name.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "vector_space",
+        "query",
+        "limit",
+        "minimum_score_nanos",
+        "minimum_margin_nanos"
+      ]
+    },
+    "LexicalRetrievalRequestV1": {
+      "description": "Durable provider-free lexical retrieval request under semantics v1.",
+      "type": "object",
+      "properties": {
+        "lexical_index": {
+          "description": "Existing lexical-index name.",
+          "type": "string"
+        },
+        "limit": {
+          "description": "Maximum returned matches.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "query": {
+          "description": "UTF-8 query analyzed by tokenizer v1.",
+          "type": "string"
+        },
+        "timeout_ms": {
+          "description": "Optional per-request timeout bounded by server policy.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "lexical_index",
+        "query",
+        "limit"
+      ]
+    }
+  }
+}

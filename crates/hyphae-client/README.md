@@ -10,7 +10,7 @@ HTTP API.
 
 ```toml
 [dependencies]
-hyphae-client = "0.1.0"
+hyphae-client = "0.2.0"
 ```
 
 The client consumes only public versioned contracts and never opens or owns a

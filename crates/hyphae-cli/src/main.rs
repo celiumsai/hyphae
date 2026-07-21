@@ -14,12 +14,18 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use hyphae_client::HyphaeClient;
-use hyphae_contracts::v1::{DeleteRequestV1, GetRequestV1, ProofV1, PutRequestV1, QueryRequestV1};
+use hyphae_contracts::v1::{
+    DefineLexicalIndexRequestV1, DefineVectorSpaceRequestV1, DeleteRequestV1,
+    DeleteVectorsRequestV1, ExactRetrievalRequestV1, GetRequestV1, HybridRetrievalRequestV1,
+    LexicalRetrievalRequestV1, ProofV1, PutRequestV1, PutVectorsRequestV1, QueryRequestV1,
+};
 use hyphae_core::current_version;
 use hyphae_engine::{
-    HyphaeEngine, ProvenResult, ResultProofArtifact, VerificationLimits, verify_result_proof,
+    HyphaeEngine, ProvenResult, ResultProofArtifact, RetrievalProofAnchor,
+    RetrievalVerificationLimits, VerificationLimits, verify_exact_retrieval_proof,
+    verify_hybrid_retrieval_proof, verify_lexical_retrieval_proof, verify_result_proof,
     write_result_proof,
 };
 use hyphae_query::{
@@ -192,6 +198,21 @@ enum Command {
         #[arg(long)]
         anchor: String,
     },
+    /// Verify an exact, lexical, or hybrid retrieval proof completely offline.
+    VerifyRetrieval {
+        /// Retrieval operation encoded by the canonical `.hyrproof` file.
+        #[arg(long, value_enum)]
+        kind: RetrievalKind,
+        /// Canonical `.hyrproof` file.
+        #[arg(long)]
+        proof: PathBuf,
+        /// Canonical format-2 logical snapshot witness referenced by the proof.
+        #[arg(long)]
+        snapshot: PathBuf,
+        /// Trusted 32-byte retrieval-anchor digest as hexadecimal.
+        #[arg(long)]
+        anchor: String,
+    },
     /// Start the optional secure version 1 HTTP server.
     Serve {
         /// Exclusively owned Hyphae data directory.
@@ -257,7 +278,42 @@ enum RemoteCommand {
         #[arg(long)]
         request: PathBuf,
     },
-    /// Download the canonical witness referenced by a `ProofV1` JSON file.
+    /// Submit a typed JSON `DefineVectorSpaceRequestV1`.
+    DefineVectorSpace {
+        #[arg(long)]
+        request: PathBuf,
+    },
+    /// Submit a typed JSON `PutVectorsRequestV1`.
+    PutVectors {
+        #[arg(long)]
+        request: PathBuf,
+    },
+    /// Submit a typed JSON `DeleteVectorsRequestV1`.
+    DeleteVectors {
+        #[arg(long)]
+        request: PathBuf,
+    },
+    /// Submit a typed JSON `ExactRetrievalRequestV1`.
+    RetrieveExact {
+        #[arg(long)]
+        request: PathBuf,
+    },
+    /// Submit a typed JSON `DefineLexicalIndexRequestV1`.
+    DefineLexicalIndex {
+        #[arg(long)]
+        request: PathBuf,
+    },
+    /// Submit a typed JSON `LexicalRetrievalRequestV1`.
+    RetrieveLexical {
+        #[arg(long)]
+        request: PathBuf,
+    },
+    /// Submit a typed JSON `HybridRetrievalRequestV1`.
+    RetrieveHybrid {
+        #[arg(long)]
+        request: PathBuf,
+    },
+    /// Download the canonical witness referenced by a result or retrieval proof JSON file.
     Witness {
         #[arg(long)]
         proof: PathBuf,
@@ -265,6 +321,13 @@ enum RemoteCommand {
         #[arg(long)]
         out: PathBuf,
     },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum RetrievalKind {
+    Exact,
+    Lexical,
+    Hybrid,
 }
 
 #[tokio::main]
@@ -319,6 +382,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
             snapshot,
             anchor,
         } => verify(&proof, &snapshot, &anchor),
+        Command::VerifyRetrieval {
+            kind,
+            proof,
+            snapshot,
+            anchor,
+        } => verify_retrieval(kind, &proof, &snapshot, &anchor),
         Command::Serve {
             data_dir,
             bind,
@@ -369,9 +438,52 @@ async fn remote(
             let request: QueryRequestV1 = read_json_request(&request)?;
             print_serializable(&client.query(&request).await?.value)
         }
+        RemoteCommand::DefineVectorSpace { request } => {
+            let request: DefineVectorSpaceRequestV1 = read_json_request(&request)?;
+            print_serializable(&client.define_vector_space(&request).await?.value)
+        }
+        RemoteCommand::PutVectors { request } => {
+            let request: PutVectorsRequestV1 = read_json_request(&request)?;
+            print_serializable(&client.put_vectors(&request).await?.value)
+        }
+        RemoteCommand::DeleteVectors { request } => {
+            let request: DeleteVectorsRequestV1 = read_json_request(&request)?;
+            print_serializable(&client.delete_vectors(&request).await?.value)
+        }
+        RemoteCommand::RetrieveExact { request } => {
+            let request: ExactRetrievalRequestV1 = read_json_request(&request)?;
+            print_serializable(&client.retrieve_exact(&request).await?.value)
+        }
+        RemoteCommand::DefineLexicalIndex { request } => {
+            let request: DefineLexicalIndexRequestV1 = read_json_request(&request)?;
+            print_serializable(&client.define_lexical_index(&request).await?.value)
+        }
+        RemoteCommand::RetrieveLexical { request } => {
+            let request: LexicalRetrievalRequestV1 = read_json_request(&request)?;
+            print_serializable(&client.retrieve_lexical(&request).await?.value)
+        }
+        RemoteCommand::RetrieveHybrid { request } => {
+            let request: HybridRetrievalRequestV1 = read_json_request(&request)?;
+            print_serializable(&client.retrieve_hybrid(&request).await?.value)
+        }
         RemoteCommand::Witness { proof, out } => {
-            let proof: ProofV1 = read_json_request(&proof)?;
-            let witness = client.download_witness(&proof).await?.value;
+            let encoded = read_json_value(&proof)?;
+            let witness = match serde_json::from_value::<ProofV1>(encoded.clone()) {
+                Ok(proof) => client.download_witness(&proof).await?.value,
+                Err(result_error) => {
+                    match serde_json::from_value::<hyphae_contracts::v1::RetrievalProofV1>(encoded)
+                    {
+                        Ok(proof) => client.download_retrieval_witness(&proof).await?.value,
+                        Err(retrieval_error) => {
+                            return Err(format!(
+                                "proof is neither ProofV1 ({result_error}) nor \
+                                 RetrievalProofV1 ({retrieval_error})"
+                            )
+                            .into());
+                        }
+                    }
+                }
+            };
             let mut output = fs::OpenOptions::new()
                 .write(true)
                 .create_new(true)
@@ -462,6 +574,10 @@ fn load_bearer_token_bytes(path: Option<&Path>) -> Result<Option<Vec<u8>>, Box<d
 }
 
 fn read_json_request<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, Box<dyn Error>> {
+    Ok(serde_json::from_value(read_json_value(path)?)?)
+}
+
+fn read_json_value(path: &Path) -> Result<serde_json::Value, Box<dyn Error>> {
     let mut encoded = Vec::new();
     if path == Path::new("-") {
         stdin().lock().read_to_end(&mut encoded)?;
@@ -625,6 +741,70 @@ fn verify(
         "snapshot_digest": encode_hex(&report.anchor.snapshot_digest),
         "result": proven_result_json(&report.result),
     }))
+}
+
+fn verify_retrieval(
+    kind: RetrievalKind,
+    proof_path: &Path,
+    snapshot_path: &Path,
+    encoded_anchor: &str,
+) -> Result<(), Box<dyn Error>> {
+    let expected_anchor = decode_hex::<32>(encoded_anchor)?;
+    let limits = RetrievalVerificationLimits::default();
+    let value = match kind {
+        RetrievalKind::Exact => {
+            let report =
+                verify_exact_retrieval_proof(proof_path, snapshot_path, expected_anchor, &limits)?;
+            retrieval_verification_json(
+                "exact",
+                &report.anchor,
+                report.anchor_digest,
+                report.proof_digest,
+            )
+        }
+        RetrievalKind::Lexical => {
+            let report = verify_lexical_retrieval_proof(
+                proof_path,
+                snapshot_path,
+                expected_anchor,
+                &limits,
+            )?;
+            retrieval_verification_json(
+                "lexical",
+                &report.anchor,
+                report.anchor_digest,
+                report.proof_digest,
+            )
+        }
+        RetrievalKind::Hybrid => {
+            let report =
+                verify_hybrid_retrieval_proof(proof_path, snapshot_path, expected_anchor, &limits)?;
+            retrieval_verification_json(
+                "hybrid",
+                &report.anchor,
+                report.anchor_digest,
+                report.proof_digest,
+            )
+        }
+    };
+    print_json(&value)
+}
+
+fn retrieval_verification_json(
+    operation: &str,
+    anchor: &RetrievalProofAnchor,
+    anchor_digest: [u8; 32],
+    proof_digest: [u8; 32],
+) -> serde_json::Value {
+    json!({
+        "status": "verified",
+        "operation": operation,
+        "anchor_digest": encode_hex(&anchor_digest),
+        "proof_digest": encode_hex(&proof_digest),
+        "checkpoint_sequence": anchor.checkpoint_sequence,
+        "checkpoint_digest": anchor.checkpoint_digest.map(|digest| encode_hex(&digest)),
+        "snapshot_digest": encode_hex(&anchor.snapshot_digest),
+    })
 }
 
 fn snapshot(data_dir: &Path) -> Result<(), Box<dyn Error>> {

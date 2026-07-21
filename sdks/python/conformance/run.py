@@ -49,6 +49,46 @@ second_page = client.query(second_request).value
 assert [record["key_hex"] for record in second_page["rows"]] == fixture["expected"]["second_page_keys"]
 assert second_page.get("next_cursor") is None
 
+assert client.define_vector_space(fixture["define_vector_space_request"]).value["status"] == "committed"
+assert client.define_vector_space(fixture["define_vector_space_request"]).value["status"] == "existing"
+try:
+    client.put_vectors(fixture["invalid_put_vectors_request"])
+except HyphaeApiError as error:
+    assert error.code == "invalid_request"
+else:
+    raise AssertionError("mixed-validity vector batch was accepted")
+assert client.put_vectors(fixture["put_vectors_request"]).value["status"] == "committed"
+assert client.define_lexical_index(fixture["define_lexical_index_request"]).value["status"] == "committed"
+
+exact = client.retrieve_exact(fixture["exact_retrieval_request"]).value
+assert exact["outcome"]["status"] == "matches"
+assert [item["key_hex"] for item in exact["outcome"]["matches"]] == fixture["expected"]["exact_retrieval_keys"]
+assert client.download_retrieval_witness(exact["proof"]).value.startswith(b"HYSNAP01")
+ambiguous = client.retrieve_exact(fixture["ambiguous_exact_retrieval_request"]).value
+assert ambiguous["outcome"]["status"] == "abstained"
+assert ambiguous["outcome"]["abstention"]["reason"] == fixture["expected"]["ambiguous_exact_reason"]
+try:
+    client.retrieve_exact(fixture["wrong_dimension_exact_retrieval_request"])
+except HyphaeApiError as error:
+    assert error.code == "invalid_request"
+else:
+    raise AssertionError("wrong-dimension query was accepted")
+
+lexical = client.retrieve_lexical(fixture["lexical_retrieval_request"]).value
+assert lexical["outcome"]["status"] == "matches"
+assert lexical["outcome"]["matches"][0]["key_hex"] == fixture["expected"]["lexical_first_key"]
+try:
+    client.retrieve_lexical(fixture["invalid_lexical_retrieval_request"])
+except HyphaeApiError as error:
+    assert error.code == "invalid_request"
+else:
+    raise AssertionError("empty lexical query was accepted")
+
+hybrid = client.retrieve_hybrid(fixture["hybrid_retrieval_request"]).value
+assert hybrid["outcome"]["status"] == "matches"
+assert hybrid["outcome"]["matches"][0]["key_hex"] == fixture["expected"]["hybrid_first_key"]
+assert client.delete_vectors(fixture["delete_vectors_request"]).value["status"] == "committed"
+
 client.delete(fixture["delete_request"])
 assert client.get({"key_hex": "62"}).value["found"] is False
 

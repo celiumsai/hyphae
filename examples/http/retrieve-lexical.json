@@ -1,0 +1,6 @@
+{
+  "lexical_index": "content",
+  "query": "durable memory",
+  "limit": 2,
+  "timeout_ms": 5000
+}

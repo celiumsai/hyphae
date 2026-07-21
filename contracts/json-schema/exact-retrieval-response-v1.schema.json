@@ -1,0 +1,227 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ExactRetrievalResponseV1",
+  "description": "Proof-bearing durable exact-retrieval response.",
+  "type": "object",
+  "properties": {
+    "outcome": {
+      "description": "Complete matches or typed abstention.",
+      "$ref": "#/$defs/ExactRetrievalOutcomeV1"
+    },
+    "proof": {
+      "description": "Canonical retrieval proof and witness identity.",
+      "$ref": "#/$defs/RetrievalProofV1"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "outcome",
+    "proof"
+  ],
+  "$defs": {
+    "ExactAbstentionReasonV1": {
+      "description": "Stable normal exact-retrieval abstention reason.",
+      "oneOf": [
+        {
+          "description": "The selected space contains no vectors.",
+          "type": "string",
+          "const": "no_candidates"
+        },
+        {
+          "description": "The best score is below the request threshold.",
+          "type": "string",
+          "const": "below_threshold"
+        },
+        {
+          "description": "The best/runner-up margin is insufficient.",
+          "type": "string",
+          "const": "ambiguous"
+        }
+      ]
+    },
+    "ExactAbstentionV1": {
+      "description": "Stable exact-retrieval abstention evidence.",
+      "type": "object",
+      "properties": {
+        "best_score_nanos": {
+          "description": "Best score when a candidate exists.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "reason": {
+          "description": "Stable reason.",
+          "$ref": "#/$defs/ExactAbstentionReasonV1"
+        },
+        "runner_up_score_nanos": {
+          "description": "Runner-up score when one exists.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "scanned_candidates": {
+          "description": "Global candidates inspected.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "reason",
+        "scanned_candidates"
+      ]
+    },
+    "ExactRetrievalMatchV1": {
+      "description": "One canonical exact-retrieval match.",
+      "type": "object",
+      "properties": {
+        "key_hex": {
+          "description": "Binary object key encoded as hexadecimal.",
+          "type": "string"
+        },
+        "score_nanos": {
+          "description": "Canonical signed integer cosine score.",
+          "type": "integer",
+          "format": "int64"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "key_hex",
+        "score_nanos"
+      ]
+    },
+    "ExactRetrievalOutcomeV1": {
+      "description": "Complete durable exact-retrieval outcome.",
+      "oneOf": [
+        {
+          "description": "Accepted globally ranked matches.",
+          "type": "object",
+          "properties": {
+            "matches": {
+              "description": "Final canonical matches.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/ExactRetrievalMatchV1"
+              }
+            },
+            "scanned_candidates": {
+              "description": "Global candidates inspected.",
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0
+            },
+            "status": {
+              "type": "string",
+              "const": "matches"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "matches",
+            "scanned_candidates"
+          ]
+        },
+        {
+          "description": "Typed normal abstention.",
+          "type": "object",
+          "properties": {
+            "abstention": {
+              "description": "Complete abstention evidence.",
+              "$ref": "#/$defs/ExactAbstentionV1"
+            },
+            "status": {
+              "type": "string",
+              "const": "abstained"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "abstention"
+          ]
+        }
+      ]
+    },
+    "RetrievalProofV1": {
+      "description": "Portable retrieval proof plus its downloadable witness reference.",
+      "type": "object",
+      "properties": {
+        "anchor_digest": {
+          "description": "Caller-pinnable retrieval anchor digest as hexadecimal.",
+          "type": "string"
+        },
+        "checkpoint_digest": {
+          "description": "Commit digest as hexadecimal, absent for empty history.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "checkpoint_sequence": {
+          "description": "Snapshot/log checkpoint sequence.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "data": {
+          "description": "Canonical `.hyrproof` bytes in standard padded base64.",
+          "type": "string"
+        },
+        "encoding": {
+          "description": "Fixed encoding identifier `base64`.",
+          "type": "string"
+        },
+        "proof_digest": {
+          "description": "Canonical proof digest as hexadecimal.",
+          "type": "string"
+        },
+        "snapshot_digest": {
+          "description": "Canonical logical snapshot digest as hexadecimal.",
+          "type": "string"
+        },
+        "witness": {
+          "description": "Authenticated endpoint for the complete offline witness.",
+          "$ref": "#/$defs/WitnessV1"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "encoding",
+        "data",
+        "proof_digest",
+        "anchor_digest",
+        "checkpoint_sequence",
+        "snapshot_digest",
+        "witness"
+      ]
+    },
+    "WitnessV1": {
+      "description": "Download reference for one canonical logical snapshot.",
+      "type": "object",
+      "properties": {
+        "file_bytes": {
+          "description": "Complete snapshot file length.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "path": {
+          "description": "Versioned relative HTTP path.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "file_bytes"
+      ]
+    }
+  }
+}

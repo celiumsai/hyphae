@@ -9,7 +9,7 @@ The single `hyphae` executable: local data engine, operations CLI, `/v1`
 server, remote client, offline proof verifier, and MCP stdio adapter.
 
 ```bash
-cargo install hyphae-cli --version 0.1.0 --locked
+cargo install hyphae-cli --version 0.2.0 --locked
 hyphae version --json
 ```
 

@@ -53,6 +53,13 @@ not terminate the stdio session. Successful calls return both compact text and
 | `hyphae_get` | `GetRequestV1` / `GetResponseV1` | Proven key presence or absence |
 | `hyphae_delete` | `DeleteRequestV1` / `CommitReceiptV1` | Atomic durable delete batch |
 | `hyphae_query` | `QueryRequestV1` / `QueryResponseV1` | Proven deterministic structured query |
+| `hyphae_define_vector_space` | `DefineVectorSpaceRequestV1` / `CommitReceiptV1` | Define/reuse an immutable durable Q15 vector space |
+| `hyphae_put_vectors` | `PutVectorsRequestV1` / `CommitReceiptV1` | Atomic durable vector batch |
+| `hyphae_delete_vectors` | `DeleteVectorsRequestV1` / `CommitReceiptV1` | Atomic durable vector deletion batch |
+| `hyphae_retrieve_exact` | `ExactRetrievalRequestV1` / `ExactRetrievalResponseV1` | Proven exact cosine retrieval |
+| `hyphae_define_lexical_index` | `DefineLexicalIndexRequestV1` / `CommitReceiptV1` | Define/reuse a provider-free lexical index |
+| `hyphae_retrieve_lexical` | `LexicalRetrievalRequestV1` / `LexicalRetrievalResponseV1` | Proven BM25F retrieval |
+| `hyphae_retrieve_hybrid` | `HybridRetrievalRequestV1` / `HybridRetrievalResponseV1` | Proven RRF fusion |
 
 Input/output schemas are embedded from `contracts/json-schema`; the adapter
 does not maintain a parallel hand-written model. Put/delete are annotated as
@@ -61,16 +68,17 @@ read-only. Supplying an explicit transaction UUID makes exact mutation retries
 durably idempotent, but the MCP annotation remains conservative.
 
 MCP does not expose backup, restore, compaction, server lifecycle, raw witness
-download, semantic retrieval, or filesystem operations. Use the local CLI or
-public SDK for those authorized workflows. Proof objects returned by get/query
-remain normal v1 proofs; download the witness with an SDK or `hyphae remote
-witness` before offline verification.
+download, offline verification, or filesystem operations. Use the local CLI
+or public SDK for those authorized workflows. Proof objects returned by
+get/query/retrieval remain normal v1 public models; download the witness with
+an SDK or `hyphae remote witness` before offline verification.
 
 ## Conformance
 
-The common live suite initializes a fresh MCP session, lists the five tools,
-executes mutation/read/query behavior, validates structured outputs, and
-compares it with Rust, TypeScript, Python, and remote CLI clients:
+The common live suite initializes a fresh MCP session, lists the twelve tools,
+executes KV/vector/lexical/hybrid behavior, validates positive and negative
+structured outputs, and compares them with Rust, TypeScript, Python, and
+remote CLI clients:
 
 ```bash
 cargo build -p hyphae-cli -p hyphae-conformance-rust --locked

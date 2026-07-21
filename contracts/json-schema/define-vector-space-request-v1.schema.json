@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DefineVectorSpaceRequestV1",
+  "description": "Atomic durable vector-space definition request.",
+  "type": "object",
+  "properties": {
+    "transaction_id": {
+      "description": "Optional UUID idempotency key; a `UUIDv7` is generated when absent.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "vector_space": {
+      "description": "Immutable vector-space definition.",
+      "$ref": "#/$defs/VectorSpaceV1"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "vector_space"
+  ],
+  "$defs": {
+    "VectorMetricV1": {
+      "description": "Canonical durable vector metric.",
+      "oneOf": [
+        {
+          "description": "Signed-Q15 integer cosine scored in nanos.",
+          "type": "string",
+          "const": "cosine_q15_nanos"
+        }
+      ]
+    },
+    "VectorSpaceV1": {
+      "description": "One immutable durable vector-space definition.",
+      "type": "object",
+      "properties": {
+        "dimension": {
+          "description": "Fixed number of signed-Q15 elements.",
+          "type": "integer",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0
+        },
+        "metric": {
+          "description": "Canonical scoring metric.",
+          "$ref": "#/$defs/VectorMetricV1"
+        },
+        "name": {
+          "description": "Stable lowercase vector-space name.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "dimension",
+        "metric"
+      ]
+    }
+  }
+}

@@ -1,0 +1,299 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HybridRetrievalResponseV1",
+  "description": "Proof-bearing deterministic hybrid retrieval response.",
+  "type": "object",
+  "properties": {
+    "outcome": {
+      "description": "Complete fused matches or typed abstention.",
+      "$ref": "#/$defs/HybridRetrievalOutcomeV1"
+    },
+    "proof": {
+      "description": "Canonical retrieval proof and witness identity.",
+      "$ref": "#/$defs/RetrievalProofV1"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "outcome",
+    "proof"
+  ],
+  "$defs": {
+    "HybridAbstentionV1": {
+      "description": "Both hybrid branches abstained normally.",
+      "type": "object",
+      "properties": {
+        "lexical": {
+          "description": "Lexical branch absence.",
+          "$ref": "#/$defs/HybridBranchAbsenceV1"
+        },
+        "vector": {
+          "description": "Exact-vector branch absence.",
+          "$ref": "#/$defs/HybridBranchAbsenceV1"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "lexical",
+        "vector"
+      ]
+    },
+    "HybridBranchAbsenceV1": {
+      "description": "Preserved reason for one absent hybrid branch.",
+      "oneOf": [
+        {
+          "description": "Lexical branch had no candidates.",
+          "type": "string",
+          "const": "lexical_no_candidates"
+        },
+        {
+          "description": "Exact-vector branch had no candidates.",
+          "type": "string",
+          "const": "vector_no_candidates"
+        },
+        {
+          "description": "Exact-vector branch was below its threshold.",
+          "type": "string",
+          "const": "vector_below_threshold"
+        },
+        {
+          "description": "Exact-vector branch was ambiguous under margin policy.",
+          "type": "string",
+          "const": "vector_ambiguous"
+        }
+      ]
+    },
+    "HybridExplanationV1": {
+      "description": "Full deterministic explanation for one hybrid result.",
+      "type": "object",
+      "properties": {
+        "final_rank": {
+          "description": "One-based final rank.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "fusion_score": {
+          "description": "Checked contribution sum.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "lexical_contribution": {
+          "description": "Integer lexical RRF contribution.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "lexical_rank": {
+          "description": "One-based lexical rank when present.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "lexical_score_nanos": {
+          "description": "Canonical lexical score when present.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "vector_contribution": {
+          "description": "Integer vector RRF contribution.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "vector_rank": {
+          "description": "One-based exact-vector rank when present.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "vector_score_nanos": {
+          "description": "Canonical exact-vector score when present.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "lexical_contribution",
+        "vector_contribution",
+        "fusion_score",
+        "final_rank"
+      ]
+    },
+    "HybridRetrievalMatchV1": {
+      "description": "One canonical hybrid retrieval match.",
+      "type": "object",
+      "properties": {
+        "explanation": {
+          "description": "Complete fusion explanation.",
+          "$ref": "#/$defs/HybridExplanationV1"
+        },
+        "key_hex": {
+          "description": "Binary object key encoded as hexadecimal.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "key_hex",
+        "explanation"
+      ]
+    },
+    "HybridRetrievalOutcomeV1": {
+      "description": "Complete deterministic hybrid retrieval outcome.",
+      "oneOf": [
+        {
+          "description": "Fused or explicit single-modality matches.",
+          "type": "object",
+          "properties": {
+            "lexical_absence": {
+              "description": "Preserved lexical absence.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/HybridBranchAbsenceV1"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "matches": {
+              "description": "Final canonical matches.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/HybridRetrievalMatchV1"
+              }
+            },
+            "status": {
+              "type": "string",
+              "const": "matches"
+            },
+            "vector_absence": {
+              "description": "Preserved exact-vector absence.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/HybridBranchAbsenceV1"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "matches"
+          ]
+        },
+        {
+          "description": "Both branches abstained.",
+          "type": "object",
+          "properties": {
+            "abstention": {
+              "description": "Complete branch abstention evidence.",
+              "$ref": "#/$defs/HybridAbstentionV1"
+            },
+            "status": {
+              "type": "string",
+              "const": "abstained"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "abstention"
+          ]
+        }
+      ]
+    },
+    "RetrievalProofV1": {
+      "description": "Portable retrieval proof plus its downloadable witness reference.",
+      "type": "object",
+      "properties": {
+        "anchor_digest": {
+          "description": "Caller-pinnable retrieval anchor digest as hexadecimal.",
+          "type": "string"
+        },
+        "checkpoint_digest": {
+          "description": "Commit digest as hexadecimal, absent for empty history.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "checkpoint_sequence": {
+          "description": "Snapshot/log checkpoint sequence.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "data": {
+          "description": "Canonical `.hyrproof` bytes in standard padded base64.",
+          "type": "string"
+        },
+        "encoding": {
+          "description": "Fixed encoding identifier `base64`.",
+          "type": "string"
+        },
+        "proof_digest": {
+          "description": "Canonical proof digest as hexadecimal.",
+          "type": "string"
+        },
+        "snapshot_digest": {
+          "description": "Canonical logical snapshot digest as hexadecimal.",
+          "type": "string"
+        },
+        "witness": {
+          "description": "Authenticated endpoint for the complete offline witness.",
+          "$ref": "#/$defs/WitnessV1"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "encoding",
+        "data",
+        "proof_digest",
+        "anchor_digest",
+        "checkpoint_sequence",
+        "snapshot_digest",
+        "witness"
+      ]
+    },
+    "WitnessV1": {
+      "description": "Download reference for one canonical logical snapshot.",
+      "type": "object",
+      "properties": {
+        "file_bytes": {
+          "description": "Complete snapshot file length.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "path": {
+          "description": "Versioned relative HTTP path.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "file_bytes"
+      ]
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "vector_space": "semantic",
+  "query": [
+    32767,
+    0
+  ],
+  "limit": 2,
+  "minimum_score_nanos": -1000000000,
+  "minimum_margin_nanos": 0,
+  "timeout_ms": 5000
+}

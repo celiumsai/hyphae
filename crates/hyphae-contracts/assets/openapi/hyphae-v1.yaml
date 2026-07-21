@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Hyphae API
-  version: 0.1.0
+  version: 0.2.0
   description: >-
     Stable version 1 HTTP contract for the autonomous Hyphae data engine.
     Hyphae remains fully usable without starting this optional server.
@@ -222,6 +222,300 @@ paths:
             application/json:
               schema:
                 $ref: "../json-schema/query-response-v1.schema.json"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "408":
+          $ref: "#/components/responses/Timeout"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/LimitExceeded"
+        "429":
+          $ref: "#/components/responses/Busy"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /v1/vector-spaces/define:
+    post:
+      tags: [data]
+      operationId: defineVectorSpace
+      summary: Define one immutable durable signed-Q15 vector space
+      security:
+        - BearerAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../json-schema/define-vector-space-request-v1.schema.json"
+      responses:
+        "200":
+          description: New commit or exact idempotent retry
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "../json-schema/commit-receipt-v1.schema.json"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/LimitExceeded"
+        "429":
+          $ref: "#/components/responses/Busy"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /v1/vectors/put:
+    post:
+      tags: [data]
+      operationId: putVectors
+      summary: Atomically upsert vectors into one durable vector space
+      security:
+        - BearerAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../json-schema/put-vectors-request-v1.schema.json"
+      responses:
+        "200":
+          description: New commit or exact idempotent retry
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "../json-schema/commit-receipt-v1.schema.json"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/LimitExceeded"
+        "429":
+          $ref: "#/components/responses/Busy"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /v1/vectors/delete:
+    post:
+      tags: [data]
+      operationId: deleteVectors
+      summary: Atomically delete vectors from one durable vector space
+      security:
+        - BearerAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../json-schema/delete-vectors-request-v1.schema.json"
+      responses:
+        "200":
+          description: New commit or exact idempotent retry
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "../json-schema/commit-receipt-v1.schema.json"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/LimitExceeded"
+        "429":
+          $ref: "#/components/responses/Busy"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /v1/retrieve/exact:
+    post:
+      tags: [data, proofs]
+      operationId: retrieveExact
+      summary: Execute canonical exact vector retrieval with an offline proof
+      security:
+        - BearerAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../json-schema/exact-retrieval-request-v1.schema.json"
+      responses:
+        "200":
+          description: Complete ranked matches or typed abstention with proof
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "../json-schema/exact-retrieval-response-v1.schema.json"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "408":
+          $ref: "#/components/responses/Timeout"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/LimitExceeded"
+        "429":
+          $ref: "#/components/responses/Busy"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /v1/lexical-indexes/define:
+    post:
+      tags: [data]
+      operationId: defineLexicalIndex
+      summary: Define one immutable provider-free lexical index
+      security:
+        - BearerAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../json-schema/define-lexical-index-request-v1.schema.json"
+      responses:
+        "200":
+          description: Durable commit receipt
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "../json-schema/commit-receipt-v1.schema.json"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/LimitExceeded"
+        "429":
+          $ref: "#/components/responses/Busy"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /v1/retrieve/lexical:
+    post:
+      tags: [data, proofs]
+      operationId: retrieveLexical
+      summary: Execute provider-free lexical retrieval with an offline proof
+      security:
+        - BearerAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../json-schema/lexical-retrieval-request-v1.schema.json"
+      responses:
+        "200":
+          description: Complete ranked matches or typed abstention with proof
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "../json-schema/lexical-retrieval-response-v1.schema.json"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "408":
+          $ref: "#/components/responses/Timeout"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/LimitExceeded"
+        "429":
+          $ref: "#/components/responses/Busy"
+        "500":
+          $ref: "#/components/responses/Internal"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /v1/retrieve/hybrid:
+    post:
+      tags: [data, proofs]
+      operationId: retrieveHybrid
+      summary: Execute deterministic lexical/vector fusion with an offline proof
+      security:
+        - BearerAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../json-schema/hybrid-retrieval-request-v1.schema.json"
+      responses:
+        "200":
+          description: Complete fused matches or typed abstention with proof
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "../json-schema/hybrid-retrieval-response-v1.schema.json"
         "400":
           $ref: "#/components/responses/InvalidRequest"
         "401":

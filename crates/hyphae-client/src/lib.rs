@@ -8,8 +8,11 @@
 use std::time::Duration;
 
 use hyphae_contracts::v1::{
-    CapabilitiesV1, CommitReceiptV1, DeleteRequestV1, ErrorV1, GetRequestV1, GetResponseV1,
-    HealthV1, ProofV1, PutRequestV1, QueryRequestV1, QueryResponseV1,
+    CapabilitiesV1, CommitReceiptV1, DefineLexicalIndexRequestV1, DefineVectorSpaceRequestV1,
+    DeleteRequestV1, DeleteVectorsRequestV1, ErrorV1, ExactRetrievalRequestV1,
+    ExactRetrievalResponseV1, GetRequestV1, GetResponseV1, HealthV1, HybridRetrievalRequestV1,
+    HybridRetrievalResponseV1, LexicalRetrievalRequestV1, LexicalRetrievalResponseV1, ProofV1,
+    PutRequestV1, PutVectorsRequestV1, QueryRequestV1, QueryResponseV1, RetrievalProofV1,
 };
 use reqwest::{
     Method, StatusCode, Url,
@@ -302,6 +305,90 @@ impl HyphaeClient {
         self.post_json("v1/query", request).await
     }
 
+    /// Defines or exactly reuses one immutable durable vector space.
+    ///
+    /// # Errors
+    ///
+    /// Returns a transport, bound, contract, correlation, or API error.
+    pub async fn define_vector_space(
+        &self,
+        request: &DefineVectorSpaceRequestV1,
+    ) -> Result<ApiResponse<CommitReceiptV1>, ClientError> {
+        self.post_json("v1/vector-spaces/define", request).await
+    }
+
+    /// Atomically stores one durable vector batch.
+    ///
+    /// # Errors
+    ///
+    /// Returns a transport, bound, contract, correlation, or API error.
+    pub async fn put_vectors(
+        &self,
+        request: &PutVectorsRequestV1,
+    ) -> Result<ApiResponse<CommitReceiptV1>, ClientError> {
+        self.post_json("v1/vectors/put", request).await
+    }
+
+    /// Atomically deletes one durable vector batch.
+    ///
+    /// # Errors
+    ///
+    /// Returns a transport, bound, contract, correlation, or API error.
+    pub async fn delete_vectors(
+        &self,
+        request: &DeleteVectorsRequestV1,
+    ) -> Result<ApiResponse<CommitReceiptV1>, ClientError> {
+        self.post_json("v1/vectors/delete", request).await
+    }
+
+    /// Executes proof-bearing exact durable vector retrieval.
+    ///
+    /// # Errors
+    ///
+    /// Returns a transport, bound, contract, correlation, or API error.
+    pub async fn retrieve_exact(
+        &self,
+        request: &ExactRetrievalRequestV1,
+    ) -> Result<ApiResponse<ExactRetrievalResponseV1>, ClientError> {
+        self.post_json("v1/retrieve/exact", request).await
+    }
+
+    /// Defines or exactly reuses one immutable provider-free lexical index.
+    ///
+    /// # Errors
+    ///
+    /// Returns a transport, bound, contract, correlation, or API error.
+    pub async fn define_lexical_index(
+        &self,
+        request: &DefineLexicalIndexRequestV1,
+    ) -> Result<ApiResponse<CommitReceiptV1>, ClientError> {
+        self.post_json("v1/lexical-indexes/define", request).await
+    }
+
+    /// Executes proof-bearing provider-free lexical retrieval.
+    ///
+    /// # Errors
+    ///
+    /// Returns a transport, bound, contract, correlation, or API error.
+    pub async fn retrieve_lexical(
+        &self,
+        request: &LexicalRetrievalRequestV1,
+    ) -> Result<ApiResponse<LexicalRetrievalResponseV1>, ClientError> {
+        self.post_json("v1/retrieve/lexical", request).await
+    }
+
+    /// Executes proof-bearing deterministic hybrid retrieval.
+    ///
+    /// # Errors
+    ///
+    /// Returns a transport, bound, contract, correlation, or API error.
+    pub async fn retrieve_hybrid(
+        &self,
+        request: &HybridRetrievalRequestV1,
+    ) -> Result<ApiResponse<HybridRetrievalResponseV1>, ClientError> {
+        self.post_json("v1/retrieve/hybrid", request).await
+    }
+
     /// Downloads the exact snapshot witness referenced by a proof.
     ///
     /// # Errors
@@ -312,14 +399,46 @@ impl HyphaeClient {
         &self,
         proof: &ProofV1,
     ) -> Result<ApiResponse<Vec<u8>>, ClientError> {
-        let expected_path = format!(
-            "/v1/witnesses/{}/{}",
-            proof.checkpoint_sequence, proof.snapshot_digest
-        );
-        if proof.witness.path != expected_path {
+        self.download_witness_parts(
+            proof.checkpoint_sequence,
+            &proof.snapshot_digest,
+            &proof.witness.path,
+            proof.witness.file_bytes,
+        )
+        .await
+    }
+
+    /// Downloads the exact snapshot witness referenced by a retrieval proof.
+    ///
+    /// # Errors
+    ///
+    /// Rejects a noncanonical reference, transport/bound/API failure, or a
+    /// digest header that disagrees with the proof.
+    pub async fn download_retrieval_witness(
+        &self,
+        proof: &RetrievalProofV1,
+    ) -> Result<ApiResponse<Vec<u8>>, ClientError> {
+        self.download_witness_parts(
+            proof.checkpoint_sequence,
+            &proof.snapshot_digest,
+            &proof.witness.path,
+            proof.witness.file_bytes,
+        )
+        .await
+    }
+
+    async fn download_witness_parts(
+        &self,
+        checkpoint_sequence: u64,
+        snapshot_digest: &str,
+        witness_path: &str,
+        witness_bytes: u64,
+    ) -> Result<ApiResponse<Vec<u8>>, ClientError> {
+        let expected_path = format!("/v1/witnesses/{checkpoint_sequence}/{snapshot_digest}");
+        if witness_path != expected_path {
             return Err(ClientError::InvalidWitnessReference);
         }
-        if proof.witness.file_bytes > u64::try_from(self.witness_bytes).unwrap_or(u64::MAX) {
+        if witness_bytes > u64::try_from(self.witness_bytes).unwrap_or(u64::MAX) {
             return Err(ClientError::ResponseTooLarge {
                 maximum: self.witness_bytes,
             });
@@ -335,12 +454,12 @@ impl HyphaeClient {
             return Err(ClientError::UnexpectedStatus(response.status().as_u16()));
         }
         let request_id = request_id(response.headers())?;
-        let expected_digest = format!("blake3={}", proof.snapshot_digest);
+        let expected_digest = format!("blake3={snapshot_digest}");
         if single_header(response.headers(), "digest") != Some(expected_digest.as_str()) {
             return Err(ClientError::WitnessDigestMismatch);
         }
         let value = read_bounded(response, self.witness_bytes).await?;
-        if u64::try_from(value.len()) != Ok(proof.witness.file_bytes) {
+        if u64::try_from(value.len()) != Ok(witness_bytes) {
             return Err(ClientError::WitnessLengthMismatch);
         }
         Ok(ApiResponse { value, request_id })

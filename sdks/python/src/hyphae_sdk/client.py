@@ -15,15 +15,26 @@ from typing import Generic, TypeVar, cast
 from .generated import (
     CapabilitiesV1,
     CommitReceiptV1,
+    DefineLexicalIndexRequestV1,
+    DefineVectorSpaceRequestV1,
     DeleteRequestV1,
+    DeleteVectorsRequestV1,
     ErrorV1,
+    ExactRetrievalRequestV1,
+    ExactRetrievalResponseV1,
     GetRequestV1,
     GetResponseV1,
     HealthV1,
+    HybridRetrievalRequestV1,
+    HybridRetrievalResponseV1,
+    LexicalRetrievalRequestV1,
+    LexicalRetrievalResponseV1,
     ProofV1,
     PutRequestV1,
+    PutVectorsRequestV1,
     QueryRequestV1,
     QueryResponseV1,
+    RetrievalProofV1,
 )
 
 DEFAULT_RESPONSE_BYTES = 32 * 1024 * 1024
@@ -130,7 +141,73 @@ class HyphaeClient:
     def query(self, request: QueryRequestV1) -> ApiResponse[QueryResponseV1]:
         return cast(ApiResponse[QueryResponseV1], self._json("v1/query", True, request))
 
+    def define_vector_space(
+        self, request: DefineVectorSpaceRequestV1
+    ) -> ApiResponse[CommitReceiptV1]:
+        return cast(
+            ApiResponse[CommitReceiptV1],
+            self._json("v1/vector-spaces/define", True, request),
+        )
+
+    def put_vectors(
+        self, request: PutVectorsRequestV1
+    ) -> ApiResponse[CommitReceiptV1]:
+        return cast(
+            ApiResponse[CommitReceiptV1],
+            self._json("v1/vectors/put", True, request),
+        )
+
+    def delete_vectors(
+        self, request: DeleteVectorsRequestV1
+    ) -> ApiResponse[CommitReceiptV1]:
+        return cast(
+            ApiResponse[CommitReceiptV1],
+            self._json("v1/vectors/delete", True, request),
+        )
+
+    def retrieve_exact(
+        self, request: ExactRetrievalRequestV1
+    ) -> ApiResponse[ExactRetrievalResponseV1]:
+        return cast(
+            ApiResponse[ExactRetrievalResponseV1],
+            self._json("v1/retrieve/exact", True, request),
+        )
+
+    def define_lexical_index(
+        self, request: DefineLexicalIndexRequestV1
+    ) -> ApiResponse[CommitReceiptV1]:
+        return cast(
+            ApiResponse[CommitReceiptV1],
+            self._json("v1/lexical-indexes/define", True, request),
+        )
+
+    def retrieve_lexical(
+        self, request: LexicalRetrievalRequestV1
+    ) -> ApiResponse[LexicalRetrievalResponseV1]:
+        return cast(
+            ApiResponse[LexicalRetrievalResponseV1],
+            self._json("v1/retrieve/lexical", True, request),
+        )
+
+    def retrieve_hybrid(
+        self, request: HybridRetrievalRequestV1
+    ) -> ApiResponse[HybridRetrievalResponseV1]:
+        return cast(
+            ApiResponse[HybridRetrievalResponseV1],
+            self._json("v1/retrieve/hybrid", True, request),
+        )
+
     def download_witness(self, proof: ProofV1) -> ApiResponse[bytes]:
+        return self._download_witness(proof)
+
+    def download_retrieval_witness(
+        self, proof: RetrievalProofV1
+    ) -> ApiResponse[bytes]:
+        return self._download_witness(proof)
+
+    def _download_witness(
+        self, proof: ProofV1 | RetrievalProofV1
+    ) -> ApiResponse[bytes]:
         expected_path = (
             f"/v1/witnesses/{proof['checkpoint_sequence']}/"
             f"{proof['snapshot_digest']}"

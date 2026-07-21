@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DefineLexicalIndexRequestV1",
+  "description": "Atomic durable lexical-index definition request.",
+  "type": "object",
+  "properties": {
+    "lexical_index": {
+      "description": "Immutable lexical-index definition.",
+      "$ref": "#/$defs/LexicalIndexV1"
+    },
+    "transaction_id": {
+      "description": "Optional UUID idempotency key; a `UUIDv7` is generated when absent.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "lexical_index"
+  ],
+  "$defs": {
+    "LexicalFieldV1": {
+      "description": "One configured field in an immutable lexical-index definition.",
+      "type": "object",
+      "properties": {
+        "path": {
+          "description": "Nonempty exact object path.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "weight_micros": {
+          "description": "Positive field weight in millionths.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "weight_micros"
+      ]
+    },
+    "LexicalIndexV1": {
+      "description": "One immutable provider-free lexical-index definition.",
+      "type": "object",
+      "properties": {
+        "fields": {
+          "description": "Nonempty unique fields; the server canonicalizes path order.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LexicalFieldV1"
+          }
+        },
+        "name": {
+          "description": "Stable lowercase index name.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "fields"
+      ]
+    }
+  }
+}

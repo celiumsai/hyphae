@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DeleteVectorsRequestV1",
+  "description": "Atomic durable vector deletion batch.",
+  "type": "object",
+  "properties": {
+    "keys_hex": {
+      "description": "Nonempty binary object keys encoded as hexadecimal.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "transaction_id": {
+      "description": "Optional UUID idempotency key; a `UUIDv7` is generated when absent.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "vector_space": {
+      "description": "Existing vector-space name.",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "vector_space",
+    "keys_hex"
+  ]
+}

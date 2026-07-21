@@ -33,5 +33,8 @@ thiserror.workspace = true
 tokio.workspace = true
 uuid.workspace = true
 
+[dev-dependencies]
+hyphae-retrieval.workspace = true
+
 [lints]
 workspace = true

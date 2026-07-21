@@ -10,10 +10,19 @@ use std::{
 
 use hyphae_client::HyphaeClient;
 use hyphae_contracts::{
-    CAPABILITIES_SCHEMA_V1, COMMIT_RECEIPT_SCHEMA_V1, DELETE_REQUEST_SCHEMA_V1,
-    GET_REQUEST_SCHEMA_V1, GET_RESPONSE_SCHEMA_V1, PUT_REQUEST_SCHEMA_V1, QUERY_REQUEST_SCHEMA_V1,
+    CAPABILITIES_SCHEMA_V1, COMMIT_RECEIPT_SCHEMA_V1, DEFINE_LEXICAL_INDEX_REQUEST_SCHEMA_V1,
+    DEFINE_VECTOR_SPACE_REQUEST_SCHEMA_V1, DELETE_REQUEST_SCHEMA_V1,
+    DELETE_VECTORS_REQUEST_SCHEMA_V1, EXACT_RETRIEVAL_REQUEST_SCHEMA_V1,
+    EXACT_RETRIEVAL_RESPONSE_SCHEMA_V1, GET_REQUEST_SCHEMA_V1, GET_RESPONSE_SCHEMA_V1,
+    HYBRID_RETRIEVAL_REQUEST_SCHEMA_V1, HYBRID_RETRIEVAL_RESPONSE_SCHEMA_V1,
+    LEXICAL_RETRIEVAL_REQUEST_SCHEMA_V1, LEXICAL_RETRIEVAL_RESPONSE_SCHEMA_V1,
+    PUT_REQUEST_SCHEMA_V1, PUT_VECTORS_REQUEST_SCHEMA_V1, QUERY_REQUEST_SCHEMA_V1,
     QUERY_RESPONSE_SCHEMA_V1,
-    v1::{DeleteRequestV1, GetRequestV1, PutRequestV1, QueryRequestV1},
+    v1::{
+        DefineLexicalIndexRequestV1, DefineVectorSpaceRequestV1, DeleteRequestV1,
+        DeleteVectorsRequestV1, ExactRetrievalRequestV1, GetRequestV1, HybridRetrievalRequestV1,
+        LexicalRetrievalRequestV1, PutRequestV1, PutVectorsRequestV1, QueryRequestV1,
+    },
 };
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
@@ -30,6 +39,16 @@ const QUERY_INPUT_SCHEMA: &str = QUERY_REQUEST_SCHEMA_V1;
 const RECEIPT_OUTPUT_SCHEMA: &str = COMMIT_RECEIPT_SCHEMA_V1;
 const GET_OUTPUT_SCHEMA: &str = GET_RESPONSE_SCHEMA_V1;
 const QUERY_OUTPUT_SCHEMA: &str = QUERY_RESPONSE_SCHEMA_V1;
+const DEFINE_VECTOR_SPACE_INPUT_SCHEMA: &str = DEFINE_VECTOR_SPACE_REQUEST_SCHEMA_V1;
+const PUT_VECTORS_INPUT_SCHEMA: &str = PUT_VECTORS_REQUEST_SCHEMA_V1;
+const DELETE_VECTORS_INPUT_SCHEMA: &str = DELETE_VECTORS_REQUEST_SCHEMA_V1;
+const EXACT_RETRIEVAL_INPUT_SCHEMA: &str = EXACT_RETRIEVAL_REQUEST_SCHEMA_V1;
+const EXACT_RETRIEVAL_OUTPUT_SCHEMA: &str = EXACT_RETRIEVAL_RESPONSE_SCHEMA_V1;
+const DEFINE_LEXICAL_INDEX_INPUT_SCHEMA: &str = DEFINE_LEXICAL_INDEX_REQUEST_SCHEMA_V1;
+const LEXICAL_RETRIEVAL_INPUT_SCHEMA: &str = LEXICAL_RETRIEVAL_REQUEST_SCHEMA_V1;
+const LEXICAL_RETRIEVAL_OUTPUT_SCHEMA: &str = LEXICAL_RETRIEVAL_RESPONSE_SCHEMA_V1;
+const HYBRID_RETRIEVAL_INPUT_SCHEMA: &str = HYBRID_RETRIEVAL_REQUEST_SCHEMA_V1;
+const HYBRID_RETRIEVAL_OUTPUT_SCHEMA: &str = HYBRID_RETRIEVAL_RESPONSE_SCHEMA_V1;
 
 struct Session {
     client: HyphaeClient,
@@ -205,6 +224,48 @@ impl Session {
                 })
                 .await
             }
+            "hyphae_define_vector_space" => {
+                self.call::<DefineVectorSpaceRequestV1, _, _, _>(arguments, |request| async move {
+                    self.client.define_vector_space(&request).await
+                })
+                .await
+            }
+            "hyphae_put_vectors" => {
+                self.call::<PutVectorsRequestV1, _, _, _>(arguments, |request| async move {
+                    self.client.put_vectors(&request).await
+                })
+                .await
+            }
+            "hyphae_delete_vectors" => {
+                self.call::<DeleteVectorsRequestV1, _, _, _>(arguments, |request| async move {
+                    self.client.delete_vectors(&request).await
+                })
+                .await
+            }
+            "hyphae_retrieve_exact" => {
+                self.call::<ExactRetrievalRequestV1, _, _, _>(arguments, |request| async move {
+                    self.client.retrieve_exact(&request).await
+                })
+                .await
+            }
+            "hyphae_define_lexical_index" => {
+                self.call::<DefineLexicalIndexRequestV1, _, _, _>(arguments, |request| async move {
+                    self.client.define_lexical_index(&request).await
+                })
+                .await
+            }
+            "hyphae_retrieve_lexical" => {
+                self.call::<LexicalRetrievalRequestV1, _, _, _>(arguments, |request| async move {
+                    self.client.retrieve_lexical(&request).await
+                })
+                .await
+            }
+            "hyphae_retrieve_hybrid" => {
+                self.call::<HybridRetrievalRequestV1, _, _, _>(arguments, |request| async move {
+                    self.client.retrieve_hybrid(&request).await
+                })
+                .await
+            }
             _ => return rpc_error(&id, -32602, "Unknown tool"),
         };
         match result {
@@ -233,6 +294,7 @@ impl Session {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn tool_definitions() -> Result<Vec<Value>, serde_json::Error> {
     Ok(vec![
         tool(
@@ -276,6 +338,69 @@ fn tool_definitions() -> Result<Vec<Value>, serde_json::Error> {
             "Execute a deterministic proof-bearing structured query without AI.",
             QUERY_INPUT_SCHEMA,
             QUERY_OUTPUT_SCHEMA,
+            true,
+            false,
+            true,
+        )?,
+        tool(
+            "hyphae_define_vector_space",
+            "Define or exactly reuse one immutable durable vector space.",
+            DEFINE_VECTOR_SPACE_INPUT_SCHEMA,
+            RECEIPT_OUTPUT_SCHEMA,
+            false,
+            true,
+            true,
+        )?,
+        tool(
+            "hyphae_put_vectors",
+            "Atomically store a durable signed-Q15 vector batch.",
+            PUT_VECTORS_INPUT_SCHEMA,
+            RECEIPT_OUTPUT_SCHEMA,
+            false,
+            true,
+            false,
+        )?,
+        tool(
+            "hyphae_delete_vectors",
+            "Atomically delete durable vectors by binary key.",
+            DELETE_VECTORS_INPUT_SCHEMA,
+            RECEIPT_OUTPUT_SCHEMA,
+            false,
+            true,
+            false,
+        )?,
+        tool(
+            "hyphae_retrieve_exact",
+            "Execute proof-bearing exact durable vector retrieval.",
+            EXACT_RETRIEVAL_INPUT_SCHEMA,
+            EXACT_RETRIEVAL_OUTPUT_SCHEMA,
+            true,
+            false,
+            true,
+        )?,
+        tool(
+            "hyphae_define_lexical_index",
+            "Define or exactly reuse one immutable provider-free lexical index.",
+            DEFINE_LEXICAL_INDEX_INPUT_SCHEMA,
+            RECEIPT_OUTPUT_SCHEMA,
+            false,
+            true,
+            true,
+        )?,
+        tool(
+            "hyphae_retrieve_lexical",
+            "Execute proof-bearing provider-free lexical retrieval.",
+            LEXICAL_RETRIEVAL_INPUT_SCHEMA,
+            LEXICAL_RETRIEVAL_OUTPUT_SCHEMA,
+            true,
+            false,
+            true,
+        )?,
+        tool(
+            "hyphae_retrieve_hybrid",
+            "Execute proof-bearing deterministic hybrid RRF retrieval.",
+            HYBRID_RETRIEVAL_INPUT_SCHEMA,
+            HYBRID_RETRIEVAL_OUTPUT_SCHEMA,
             true,
             false,
             true,
@@ -381,7 +506,7 @@ mod tests {
     #[test]
     fn embedded_tool_schemas_are_valid_json_objects() -> Result<(), serde_json::Error> {
         let tools = tool_definitions()?;
-        assert_eq!(tools.len(), 5);
+        assert_eq!(tools.len(), 12);
         assert!(tools.iter().all(|tool| tool["inputSchema"].is_object()));
         assert!(tools.iter().all(|tool| tool["outputSchema"].is_object()));
         Ok(())

@@ -1,0 +1,19 @@
+{
+  "vector_space": "semantic",
+  "vectors": [
+    {
+      "key_hex": "616c706861",
+      "values": [
+        32767,
+        0
+      ]
+    },
+    {
+      "key_hex": "62657461",
+      "values": [
+        0,
+        32767
+      ]
+    }
+  ]
+}

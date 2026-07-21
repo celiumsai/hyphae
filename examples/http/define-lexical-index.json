@@ -1,0 +1,19 @@
+{
+  "lexical_index": {
+    "name": "content",
+    "fields": [
+      {
+        "path": [
+          "title"
+        ],
+        "weight_micros": 2000000
+      },
+      {
+        "path": [
+          "body"
+        ],
+        "weight_micros": 1000000
+      }
+    ]
+  }
+}

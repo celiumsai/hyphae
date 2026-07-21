@@ -8,9 +8,10 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use hyphae_contracts::v1::ErrorV1;
-use hyphae_engine::{EngineError, ProofError};
+use hyphae_engine::{EngineError, ProofError, RetrievalProofError};
 use hyphae_query::QueryError;
-use hyphae_storage::{LogError, MutationError, StorageError};
+use hyphae_retrieval::{ExactRetrievalError, HybridError, LexicalError};
+use hyphae_storage::{LogError, MaterializedIndexError, MutationError, StorageError};
 use thiserror::Error;
 
 use crate::ServerConfigError;
@@ -117,16 +118,82 @@ impl ApiError {
 
     pub(crate) fn from_engine(error: EngineError, request_id: &str) -> Self {
         match error {
-            EngineError::DuplicateDocumentKey => Self::invalid(request_id),
+            EngineError::DuplicateDocumentKey | EngineError::EmptyBatch => {
+                Self::invalid(request_id)
+            }
             EngineError::Document(_) => Self::limit(request_id),
             EngineError::Query(source) => Self::from_query(&source, request_id),
             EngineError::Storage(source) => Self::from_storage(&source, request_id),
-            EngineError::Proof(ProofError::ProofLimitExceeded { .. }) => {
+            EngineError::ExactRetrieval(source) => Self::from_exact_retrieval(&source, request_id),
+            EngineError::Lexical(source) => Self::from_lexical(&source, request_id),
+            EngineError::Hybrid(source) => Self::from_hybrid(&source, request_id),
+            EngineError::Proof(ProofError::ProofLimitExceeded { .. })
+            | EngineError::RetrievalProof(RetrievalProofError::ProofLimitExceeded { .. }) => {
                 Self::result_too_large(request_id)
             }
-            EngineError::Backup(_) | EngineError::Proof(_) | EngineError::Retrieval(_) => {
+            EngineError::Backup(_)
+            | EngineError::Proof(_)
+            | EngineError::RetrievalProof(_)
+            | EngineError::Retrieval(_) => Self::internal(request_id),
+        }
+    }
+
+    fn from_lexical(error: &LexicalError, request_id: &str) -> Self {
+        match error {
+            LexicalError::TimedOut => Self::new(
+                StatusCode::REQUEST_TIMEOUT,
+                "timeout",
+                "lexical retrieval deadline elapsed without a partial result",
+                request_id,
+            ),
+            LexicalError::ResultLimitExceeded { .. }
+            | LexicalError::DocumentBudgetExceeded { .. }
+            | LexicalError::TokenBudgetExceeded { .. }
+            | LexicalError::CandidateBudgetExceeded { .. } => Self::limit(request_id),
+            LexicalError::EmptyFields
+            | LexicalError::TooManyFields
+            | LexicalError::EmptyFieldPath
+            | LexicalError::InvalidFieldSegment
+            | LexicalError::DuplicateFieldPath
+            | LexicalError::InvalidFieldWeight
+            | LexicalError::IndexMismatch
+            | LexicalError::EmptyQuery
+            | LexicalError::ZeroLimit
+            | LexicalError::EmptyDocumentKey
+            | LexicalError::DuplicateDocumentKey => Self::invalid(request_id),
+            LexicalError::ArithmeticOverflow | LexicalError::MalformedProjection => {
                 Self::internal(request_id)
             }
+        }
+    }
+
+    fn from_hybrid(error: &HybridError, request_id: &str) -> Self {
+        match error {
+            HybridError::InvalidWeight
+            | HybridError::ZeroLimit
+            | HybridError::DuplicateBranchKey => Self::invalid(request_id),
+            HybridError::ArithmeticOverflow => Self::internal(request_id),
+        }
+    }
+
+    fn from_exact_retrieval(error: &ExactRetrievalError, request_id: &str) -> Self {
+        match error {
+            ExactRetrievalError::TimedOut => Self::new(
+                StatusCode::REQUEST_TIMEOUT,
+                "timeout",
+                "retrieval deadline elapsed without a partial result",
+                request_id,
+            ),
+            ExactRetrievalError::ResultLimitExceeded { .. }
+            | ExactRetrievalError::CandidateBudgetExceeded { .. }
+            | ExactRetrievalError::CandidateByteBudgetExceeded { .. } => Self::limit(request_id),
+            ExactRetrievalError::EmptyCandidateKey
+            | ExactRetrievalError::DuplicateCandidateKey
+            | ExactRetrievalError::DimensionMismatch { .. }
+            | ExactRetrievalError::ZeroLimit
+            | ExactRetrievalError::InvalidMinimumScore
+            | ExactRetrievalError::InvalidMinimumMargin => Self::invalid(request_id),
+            ExactRetrievalError::ArithmeticOverflow => Self::internal(request_id),
         }
     }
 
@@ -165,6 +232,31 @@ impl ApiError {
 
     fn from_storage(error: &StorageError, request_id: &str) -> Self {
         match error {
+            StorageError::Index { source }
+                if matches!(
+                    source.as_ref(),
+                    MaterializedIndexError::VectorSpaceConflict { .. }
+                        | MaterializedIndexError::LexicalIndexConflict { .. }
+                ) =>
+            {
+                Self::new(
+                    StatusCode::CONFLICT,
+                    "definition_conflict",
+                    "immutable retrieval definition already exists with different contents",
+                    request_id,
+                )
+            }
+            StorageError::Index { source }
+                if matches!(
+                    source.as_ref(),
+                    MaterializedIndexError::UnknownVectorSpace { .. }
+                        | MaterializedIndexError::UnknownLexicalIndex { .. }
+                        | MaterializedIndexError::Vector(_)
+                        | MaterializedIndexError::Lexical(_)
+                ) =>
+            {
+                Self::invalid(request_id)
+            }
             StorageError::Mutation(
                 MutationError::EmptyKey
                 | MutationError::KeyTooLarge { .. }

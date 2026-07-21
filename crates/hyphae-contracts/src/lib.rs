@@ -48,6 +48,50 @@ pub const QUERY_RESPONSE_SCHEMA_V1: &str =
 /// JSON Schema for version 1 result-proof transport.
 pub const PROOF_SCHEMA_V1: &str = include_str!("../assets/json-schema/proof-v1.schema.json");
 
+/// JSON Schema for immutable vector-space definition requests.
+pub const DEFINE_VECTOR_SPACE_REQUEST_SCHEMA_V1: &str =
+    include_str!("../assets/json-schema/define-vector-space-request-v1.schema.json");
+
+/// JSON Schema for atomic durable vector upsert requests.
+pub const PUT_VECTORS_REQUEST_SCHEMA_V1: &str =
+    include_str!("../assets/json-schema/put-vectors-request-v1.schema.json");
+
+/// JSON Schema for atomic durable vector deletion requests.
+pub const DELETE_VECTORS_REQUEST_SCHEMA_V1: &str =
+    include_str!("../assets/json-schema/delete-vectors-request-v1.schema.json");
+
+/// JSON Schema for durable exact-retrieval requests.
+pub const EXACT_RETRIEVAL_REQUEST_SCHEMA_V1: &str =
+    include_str!("../assets/json-schema/exact-retrieval-request-v1.schema.json");
+
+/// JSON Schema for proof-bearing exact-retrieval responses.
+pub const EXACT_RETRIEVAL_RESPONSE_SCHEMA_V1: &str =
+    include_str!("../assets/json-schema/exact-retrieval-response-v1.schema.json");
+
+/// JSON Schema for canonical retrieval-proof transport.
+pub const RETRIEVAL_PROOF_SCHEMA_V1: &str =
+    include_str!("../assets/json-schema/retrieval-proof-v1.schema.json");
+
+/// JSON Schema for immutable lexical-index definition requests.
+pub const DEFINE_LEXICAL_INDEX_REQUEST_SCHEMA_V1: &str =
+    include_str!("../assets/json-schema/define-lexical-index-request-v1.schema.json");
+
+/// JSON Schema for durable lexical-retrieval requests.
+pub const LEXICAL_RETRIEVAL_REQUEST_SCHEMA_V1: &str =
+    include_str!("../assets/json-schema/lexical-retrieval-request-v1.schema.json");
+
+/// JSON Schema for proof-bearing lexical-retrieval responses.
+pub const LEXICAL_RETRIEVAL_RESPONSE_SCHEMA_V1: &str =
+    include_str!("../assets/json-schema/lexical-retrieval-response-v1.schema.json");
+
+/// JSON Schema for deterministic hybrid-retrieval requests.
+pub const HYBRID_RETRIEVAL_REQUEST_SCHEMA_V1: &str =
+    include_str!("../assets/json-schema/hybrid-retrieval-request-v1.schema.json");
+
+/// JSON Schema for proof-bearing hybrid-retrieval responses.
+pub const HYBRID_RETRIEVAL_RESPONSE_SCHEMA_V1: &str =
+    include_str!("../assets/json-schema/hybrid-retrieval-response-v1.schema.json");
+
 #[cfg(test)]
 mod tests {
     use std::{error::Error, fs, io, path::Path};
@@ -58,13 +102,21 @@ mod tests {
     use schemars::{JsonSchema, SchemaGenerator};
 
     use super::{
-        CAPABILITIES_SCHEMA_V1, COMMIT_RECEIPT_SCHEMA_V1, DELETE_REQUEST_SCHEMA_V1,
-        ERROR_SCHEMA_V1, GET_REQUEST_SCHEMA_V1, GET_RESPONSE_SCHEMA_V1, HEALTH_SCHEMA_V1,
-        OPENAPI_V1, PROOF_SCHEMA_V1, PUT_REQUEST_SCHEMA_V1, QUERY_REQUEST_SCHEMA_V1,
-        QUERY_RESPONSE_SCHEMA_V1,
+        CAPABILITIES_SCHEMA_V1, COMMIT_RECEIPT_SCHEMA_V1, DEFINE_LEXICAL_INDEX_REQUEST_SCHEMA_V1,
+        DEFINE_VECTOR_SPACE_REQUEST_SCHEMA_V1, DELETE_REQUEST_SCHEMA_V1,
+        DELETE_VECTORS_REQUEST_SCHEMA_V1, ERROR_SCHEMA_V1, EXACT_RETRIEVAL_REQUEST_SCHEMA_V1,
+        EXACT_RETRIEVAL_RESPONSE_SCHEMA_V1, GET_REQUEST_SCHEMA_V1, GET_RESPONSE_SCHEMA_V1,
+        HEALTH_SCHEMA_V1, HYBRID_RETRIEVAL_REQUEST_SCHEMA_V1, HYBRID_RETRIEVAL_RESPONSE_SCHEMA_V1,
+        LEXICAL_RETRIEVAL_REQUEST_SCHEMA_V1, LEXICAL_RETRIEVAL_RESPONSE_SCHEMA_V1, OPENAPI_V1,
+        PROOF_SCHEMA_V1, PUT_REQUEST_SCHEMA_V1, PUT_VECTORS_REQUEST_SCHEMA_V1,
+        QUERY_REQUEST_SCHEMA_V1, QUERY_RESPONSE_SCHEMA_V1, RETRIEVAL_PROOF_SCHEMA_V1,
         v1::{
-            CapabilitiesV1, CommitReceiptV1, DeleteRequestV1, ErrorV1, GetRequestV1, GetResponseV1,
-            HealthV1, ProofV1, PutRequestV1, QueryRequestV1, QueryResponseV1,
+            CapabilitiesV1, CommitReceiptV1, DefineLexicalIndexRequestV1,
+            DefineVectorSpaceRequestV1, DeleteRequestV1, DeleteVectorsRequestV1, ErrorV1,
+            ExactRetrievalRequestV1, ExactRetrievalResponseV1, GetRequestV1, GetResponseV1,
+            HealthV1, HybridRetrievalRequestV1, HybridRetrievalResponseV1,
+            LexicalRetrievalRequestV1, LexicalRetrievalResponseV1, ProofV1, PutRequestV1,
+            PutVectorsRequestV1, QueryRequestV1, QueryResponseV1, RetrievalProofV1,
         },
     };
 
@@ -79,7 +131,7 @@ mod tests {
     }
 
     #[test]
-    fn openapi_defines_phase_five_surface_and_resolves_external_schemas()
+    fn openapi_defines_version_one_surface_and_resolves_external_schemas()
     -> Result<(), Box<dyn Error>> {
         let document: YamlValue = serde_yaml_ng::from_str(OPENAPI_V1)?;
         let paths = document
@@ -94,6 +146,13 @@ mod tests {
             ("/v1/kv/get", "post"),
             ("/v1/kv/delete", "post"),
             ("/v1/query", "post"),
+            ("/v1/vector-spaces/define", "post"),
+            ("/v1/vectors/put", "post"),
+            ("/v1/vectors/delete", "post"),
+            ("/v1/retrieve/exact", "post"),
+            ("/v1/lexical-indexes/define", "post"),
+            ("/v1/retrieve/lexical", "post"),
+            ("/v1/retrieve/hybrid", "post"),
             (
                 "/v1/witnesses/{checkpoint_sequence}/{snapshot_digest}",
                 "get",
@@ -154,6 +213,50 @@ mod tests {
                 QUERY_RESPONSE_SCHEMA_V1,
             ),
             ("json-schema/proof-v1.schema.json", PROOF_SCHEMA_V1),
+            (
+                "json-schema/define-vector-space-request-v1.schema.json",
+                DEFINE_VECTOR_SPACE_REQUEST_SCHEMA_V1,
+            ),
+            (
+                "json-schema/put-vectors-request-v1.schema.json",
+                PUT_VECTORS_REQUEST_SCHEMA_V1,
+            ),
+            (
+                "json-schema/delete-vectors-request-v1.schema.json",
+                DELETE_VECTORS_REQUEST_SCHEMA_V1,
+            ),
+            (
+                "json-schema/exact-retrieval-request-v1.schema.json",
+                EXACT_RETRIEVAL_REQUEST_SCHEMA_V1,
+            ),
+            (
+                "json-schema/exact-retrieval-response-v1.schema.json",
+                EXACT_RETRIEVAL_RESPONSE_SCHEMA_V1,
+            ),
+            (
+                "json-schema/retrieval-proof-v1.schema.json",
+                RETRIEVAL_PROOF_SCHEMA_V1,
+            ),
+            (
+                "json-schema/define-lexical-index-request-v1.schema.json",
+                DEFINE_LEXICAL_INDEX_REQUEST_SCHEMA_V1,
+            ),
+            (
+                "json-schema/lexical-retrieval-request-v1.schema.json",
+                LEXICAL_RETRIEVAL_REQUEST_SCHEMA_V1,
+            ),
+            (
+                "json-schema/lexical-retrieval-response-v1.schema.json",
+                LEXICAL_RETRIEVAL_RESPONSE_SCHEMA_V1,
+            ),
+            (
+                "json-schema/hybrid-retrieval-request-v1.schema.json",
+                HYBRID_RETRIEVAL_REQUEST_SCHEMA_V1,
+            ),
+            (
+                "json-schema/hybrid-retrieval-response-v1.schema.json",
+                HYBRID_RETRIEVAL_RESPONSE_SCHEMA_V1,
+            ),
         ] {
             assert_eq!(
                 fs::read_to_string(canonical_root.join(relative))?,
@@ -178,6 +281,17 @@ mod tests {
             QUERY_REQUEST_SCHEMA_V1,
             QUERY_RESPONSE_SCHEMA_V1,
             PROOF_SCHEMA_V1,
+            DEFINE_VECTOR_SPACE_REQUEST_SCHEMA_V1,
+            PUT_VECTORS_REQUEST_SCHEMA_V1,
+            DELETE_VECTORS_REQUEST_SCHEMA_V1,
+            EXACT_RETRIEVAL_REQUEST_SCHEMA_V1,
+            EXACT_RETRIEVAL_RESPONSE_SCHEMA_V1,
+            RETRIEVAL_PROOF_SCHEMA_V1,
+            DEFINE_LEXICAL_INDEX_REQUEST_SCHEMA_V1,
+            LEXICAL_RETRIEVAL_REQUEST_SCHEMA_V1,
+            LEXICAL_RETRIEVAL_RESPONSE_SCHEMA_V1,
+            HYBRID_RETRIEVAL_REQUEST_SCHEMA_V1,
+            HYBRID_RETRIEVAL_RESPONSE_SCHEMA_V1,
         ] {
             let document: JsonValue = serde_json::from_str(schema)?;
             assert_eq!(
@@ -201,6 +315,17 @@ mod tests {
         assert_schema::<QueryRequestV1>(QUERY_REQUEST_SCHEMA_V1)?;
         assert_schema::<QueryResponseV1>(QUERY_RESPONSE_SCHEMA_V1)?;
         assert_schema::<ProofV1>(PROOF_SCHEMA_V1)?;
+        assert_schema::<DefineVectorSpaceRequestV1>(DEFINE_VECTOR_SPACE_REQUEST_SCHEMA_V1)?;
+        assert_schema::<PutVectorsRequestV1>(PUT_VECTORS_REQUEST_SCHEMA_V1)?;
+        assert_schema::<DeleteVectorsRequestV1>(DELETE_VECTORS_REQUEST_SCHEMA_V1)?;
+        assert_schema::<ExactRetrievalRequestV1>(EXACT_RETRIEVAL_REQUEST_SCHEMA_V1)?;
+        assert_schema::<ExactRetrievalResponseV1>(EXACT_RETRIEVAL_RESPONSE_SCHEMA_V1)?;
+        assert_schema::<RetrievalProofV1>(RETRIEVAL_PROOF_SCHEMA_V1)?;
+        assert_schema::<DefineLexicalIndexRequestV1>(DEFINE_LEXICAL_INDEX_REQUEST_SCHEMA_V1)?;
+        assert_schema::<LexicalRetrievalRequestV1>(LEXICAL_RETRIEVAL_REQUEST_SCHEMA_V1)?;
+        assert_schema::<LexicalRetrievalResponseV1>(LEXICAL_RETRIEVAL_RESPONSE_SCHEMA_V1)?;
+        assert_schema::<HybridRetrievalRequestV1>(HYBRID_RETRIEVAL_REQUEST_SCHEMA_V1)?;
+        assert_schema::<HybridRetrievalResponseV1>(HYBRID_RETRIEVAL_RESPONSE_SCHEMA_V1)?;
         Ok(())
     }
 

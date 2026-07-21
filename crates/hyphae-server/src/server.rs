@@ -22,13 +22,32 @@ use axum::{
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use hyphae_contracts::v1::{
-    CapabilitiesV1, CommitReceiptV1, DeleteRequestV1, GetRequestV1, GetResponseV1, HealthV1,
-    ProofV1, PutRequestV1, QueryRequestV1, QueryResponseV1, RecordV1, WitnessV1, decode_key_hex,
+    CapabilitiesV1, CommitReceiptV1, DefineLexicalIndexRequestV1, DefineVectorSpaceRequestV1,
+    DeleteRequestV1, DeleteVectorsRequestV1, ExactAbstentionReasonV1, ExactAbstentionV1,
+    ExactRetrievalMatchV1, ExactRetrievalOutcomeV1, ExactRetrievalRequestV1,
+    ExactRetrievalResponseV1, GetRequestV1, GetResponseV1, HealthV1, HybridAbstentionV1,
+    HybridBranchAbsenceV1, HybridExplanationV1, HybridRetrievalMatchV1, HybridRetrievalOutcomeV1,
+    HybridRetrievalRequestV1, HybridRetrievalResponseV1, LexicalAbstentionReasonV1,
+    LexicalAbstentionV1, LexicalFieldContributionV1, LexicalRetrievalMatchV1,
+    LexicalRetrievalOutcomeV1, LexicalRetrievalRequestV1, LexicalRetrievalResponseV1,
+    LexicalTermContributionV1, ProofV1, PutRequestV1, PutVectorsRequestV1, QueryRequestV1,
+    QueryResponseV1, RecordV1, RetrievalProofV1, VectorMetricV1, WitnessV1, decode_key_hex,
     encode_hex,
 };
-use hyphae_core::current_version;
-use hyphae_engine::{EngineError, HyphaeEngine, ProofError, ProvenResult, ResultProofArtifact};
-use hyphae_storage::{AppendOutcome, LogError, SnapshotError, StorageError, verify_snapshot};
+use hyphae_core::{Q15Vector, VectorSpaceDefinition, VectorSpaceName, current_version};
+use hyphae_engine::{
+    EngineError, ExactRetrievalProofArtifact, HybridRetrievalProofArtifact, HyphaeEngine,
+    LexicalRetrievalProofArtifact, ProofError, ProvenResult, ResultProofArtifact,
+};
+use hyphae_query::FieldPath;
+use hyphae_retrieval::{
+    ExactAbstentionReason, ExactRetrievalOutcome, ExactRetrievalRequest, HybridBranchAbsence,
+    HybridOutcome, HybridRequest, LexicalAbstentionReason, LexicalField, LexicalIndexDefinition,
+    LexicalOutcome, LexicalRequest,
+};
+use hyphae_storage::{
+    AppendOutcome, LogError, MaterializedIndexError, SnapshotError, StorageError, verify_snapshot,
+};
 use serde::{Serialize, de::DeserializeOwned};
 use tokio::{net::TcpListener, sync::Semaphore};
 use tokio_util::io::ReaderStream;
@@ -36,14 +55,21 @@ use uuid::Uuid;
 
 use crate::{ApiError, BearerToken, ServerConfig, ServerError, ServerLimits};
 
-const FEATURES: [&str; 7] = [
+const FEATURES: [&str; 14] = [
     "atomic_batch",
     "deterministic_query",
+    "durable_vectors",
+    "exact_retrieval",
+    "hybrid_retrieval",
     "idempotency",
     "kv",
+    "lexical_retrieval",
     "offline_result_proof",
+    "offline_retrieval_proof",
+    "provider_free_lexical",
     "snapshot_witness",
     "structured_aggregation",
+    "typed_abstention",
 ];
 
 #[derive(Clone, Debug)]
@@ -159,6 +185,13 @@ fn build_router(state: Arc<ServerState>) -> Router {
         .route("/v1/kv/get", post(get_record))
         .route("/v1/kv/delete", post(delete_records))
         .route("/v1/query", post(query_records))
+        .route("/v1/vector-spaces/define", post(define_vector_space))
+        .route("/v1/vectors/put", post(put_vectors))
+        .route("/v1/vectors/delete", post(delete_vectors))
+        .route("/v1/retrieve/exact", post(retrieve_exact))
+        .route("/v1/lexical-indexes/define", post(define_lexical_index))
+        .route("/v1/retrieve/lexical", post(retrieve_lexical))
+        .route("/v1/retrieve/hybrid", post(retrieve_hybrid))
         .route(
             "/v1/witnesses/{checkpoint_sequence}/{snapshot_digest}",
             get(download_witness),
@@ -367,6 +400,237 @@ async fn query_records(
     )
 }
 
+async fn define_vector_space(
+    State(state): State<Arc<ServerState>>,
+    Extension(request_id): Extension<RequestId>,
+    request: Request,
+) -> Result<Response, ApiError> {
+    let request: DefineVectorSpaceRequestV1 = parse_json(request, &state, &request_id.0).await?;
+    let transaction_id = parse_transaction_id(request.transaction_id.as_deref(), &request_id.0)?;
+    if request.vector_space.metric != VectorMetricV1::CosineQ15Nanos {
+        return Err(ApiError::invalid(&request_id.0));
+    }
+    let name = VectorSpaceName::new(request.vector_space.name)
+        .map_err(|_| ApiError::invalid(&request_id.0))?;
+    let definition = VectorSpaceDefinition::cosine(name, request.vector_space.dimension)
+        .map_err(|_| ApiError::invalid(&request_id.0))?;
+    let outcome = with_engine(Arc::clone(&state), &request_id.0, move |engine| {
+        capture_write_outcome(engine.define_vector_space(transaction_id, definition))
+    })
+    .await?;
+    if outcome.requires_recovery {
+        state.ready.store(false, Ordering::Release);
+    }
+    bounded_json(&receipt(outcome.append), &state, &request_id.0)
+}
+
+async fn put_vectors(
+    State(state): State<Arc<ServerState>>,
+    Extension(request_id): Extension<RequestId>,
+    request: Request,
+) -> Result<Response, ApiError> {
+    let request: PutVectorsRequestV1 = parse_json(request, &state, &request_id.0).await?;
+    validate_batch(request.vectors.len(), &state, &request_id.0)?;
+    let transaction_id = parse_transaction_id(request.transaction_id.as_deref(), &request_id.0)?;
+    let space =
+        VectorSpaceName::new(request.vector_space).map_err(|_| ApiError::invalid(&request_id.0))?;
+    let vectors = request
+        .vectors
+        .into_iter()
+        .map(|vector| {
+            Ok((
+                decode_key_hex(&vector.key_hex).map_err(|_| ApiError::invalid(&request_id.0))?,
+                Q15Vector::new(vector.values).map_err(|_| ApiError::invalid(&request_id.0))?,
+            ))
+        })
+        .collect::<Result<Vec<_>, ApiError>>()?;
+    let outcome = with_engine(Arc::clone(&state), &request_id.0, move |engine| {
+        capture_write_outcome(engine.put_vectors(transaction_id, &space, &vectors))
+    })
+    .await?;
+    if outcome.requires_recovery {
+        state.ready.store(false, Ordering::Release);
+    }
+    bounded_json(&receipt(outcome.append), &state, &request_id.0)
+}
+
+async fn delete_vectors(
+    State(state): State<Arc<ServerState>>,
+    Extension(request_id): Extension<RequestId>,
+    request: Request,
+) -> Result<Response, ApiError> {
+    let request: DeleteVectorsRequestV1 = parse_json(request, &state, &request_id.0).await?;
+    validate_batch(request.keys_hex.len(), &state, &request_id.0)?;
+    let transaction_id = parse_transaction_id(request.transaction_id.as_deref(), &request_id.0)?;
+    let space =
+        VectorSpaceName::new(request.vector_space).map_err(|_| ApiError::invalid(&request_id.0))?;
+    let keys = request
+        .keys_hex
+        .iter()
+        .map(|key| decode_key_hex(key))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| ApiError::invalid(&request_id.0))?;
+    let outcome = with_engine(Arc::clone(&state), &request_id.0, move |engine| {
+        let keys = keys.iter().map(Vec::as_slice).collect::<Vec<_>>();
+        capture_write_outcome(engine.delete_vectors(transaction_id, &space, &keys))
+    })
+    .await?;
+    if outcome.requires_recovery {
+        state.ready.store(false, Ordering::Release);
+    }
+    bounded_json(&receipt(outcome.append), &state, &request_id.0)
+}
+
+async fn retrieve_exact(
+    State(state): State<Arc<ServerState>>,
+    Extension(request_id): Extension<RequestId>,
+    request: Request,
+) -> Result<Response, ApiError> {
+    let request: ExactRetrievalRequestV1 = parse_json(request, &state, &request_id.0).await?;
+    let timeout = requested_retrieval_timeout(request.timeout_ms, &state, &request_id.0)?;
+    let request = exact_request(request, &request_id.0)?;
+    let mut limits = state.limits.exact_retrieval.clone();
+    limits.timeout = timeout;
+    let artifact = with_engine(Arc::clone(&state), &request_id.0, move |engine| {
+        engine.retrieve_exact_with_proof(&request, &limits)
+    })
+    .await?;
+    let proof = retrieval_proof_transport(&artifact, &state, &request_id.0)?;
+    let response = ExactRetrievalResponseV1 {
+        outcome: exact_outcome_transport(artifact.proof.outcome()),
+        proof,
+    };
+    bounded_json(&response, &state, &request_id.0)
+}
+
+fn exact_request(
+    request: ExactRetrievalRequestV1,
+    request_id: &str,
+) -> Result<ExactRetrievalRequest, ApiError> {
+    Ok(ExactRetrievalRequest {
+        vector_space: VectorSpaceName::new(request.vector_space)
+            .map_err(|_| ApiError::invalid(request_id))?,
+        query: Q15Vector::new(request.query).map_err(|_| ApiError::invalid(request_id))?,
+        limit: usize::try_from(request.limit).map_err(|_| ApiError::limit(request_id))?,
+        minimum_score_nanos: request.minimum_score_nanos,
+        minimum_margin_nanos: request.minimum_margin_nanos,
+    })
+}
+
+fn lexical_request(
+    request: LexicalRetrievalRequestV1,
+    request_id: &str,
+) -> Result<LexicalRequest, ApiError> {
+    Ok(LexicalRequest {
+        index: VectorSpaceName::new(request.lexical_index)
+            .map_err(|_| ApiError::invalid(request_id))?,
+        query: request.query,
+        limit: usize::try_from(request.limit).map_err(|_| ApiError::limit(request_id))?,
+    })
+}
+
+async fn define_lexical_index(
+    State(state): State<Arc<ServerState>>,
+    Extension(request_id): Extension<RequestId>,
+    request: Request,
+) -> Result<Response, ApiError> {
+    let request: DefineLexicalIndexRequestV1 = parse_json(request, &state, &request_id.0).await?;
+    let transaction_id = parse_transaction_id(request.transaction_id.as_deref(), &request_id.0)?;
+    let name = VectorSpaceName::new(request.lexical_index.name)
+        .map_err(|_| ApiError::invalid(&request_id.0))?;
+    let fields = request
+        .lexical_index
+        .fields
+        .into_iter()
+        .map(|field| {
+            Ok(LexicalField {
+                path: FieldPath::new(field.path),
+                weight_micros: field.weight_micros,
+            })
+        })
+        .collect::<Result<Vec<_>, ApiError>>()?;
+    let definition =
+        LexicalIndexDefinition::new(name, fields).map_err(|_| ApiError::invalid(&request_id.0))?;
+    let outcome = with_engine(Arc::clone(&state), &request_id.0, move |engine| {
+        capture_write_outcome(engine.define_lexical_index(transaction_id, definition))
+    })
+    .await?;
+    if outcome.requires_recovery {
+        state.ready.store(false, Ordering::Release);
+    }
+    bounded_json(&receipt(outcome.append), &state, &request_id.0)
+}
+
+async fn retrieve_lexical(
+    State(state): State<Arc<ServerState>>,
+    Extension(request_id): Extension<RequestId>,
+    request: Request,
+) -> Result<Response, ApiError> {
+    let request: LexicalRetrievalRequestV1 = parse_json(request, &state, &request_id.0).await?;
+    let timeout = requested_lexical_timeout(request.timeout_ms, &state, &request_id.0)?;
+    let request = lexical_request(request, &request_id.0)?;
+    let mut limits = state.limits.lexical_retrieval.clone();
+    limits.timeout = timeout;
+    let artifact = with_engine(Arc::clone(&state), &request_id.0, move |engine| {
+        engine.retrieve_lexical_with_proof(&request, &limits)
+    })
+    .await?;
+    let proof = lexical_retrieval_proof_transport(&artifact, &state, &request_id.0)?;
+    bounded_json(
+        &LexicalRetrievalResponseV1 {
+            outcome: lexical_outcome_transport(artifact.proof.outcome()),
+            proof,
+        },
+        &state,
+        &request_id.0,
+    )
+}
+
+async fn retrieve_hybrid(
+    State(state): State<Arc<ServerState>>,
+    Extension(request_id): Extension<RequestId>,
+    request: Request,
+) -> Result<Response, ApiError> {
+    let request: HybridRetrievalRequestV1 = parse_json(request, &state, &request_id.0).await?;
+    let lexical_timeout =
+        requested_lexical_timeout(request.lexical.timeout_ms, &state, &request_id.0)?;
+    let vector_timeout =
+        requested_retrieval_timeout(request.vector.timeout_ms, &state, &request_id.0)?;
+    let lexical_request = lexical_request(request.lexical, &request_id.0)?;
+    let vector_request = exact_request(request.vector, &request_id.0)?;
+    let hybrid_request = HybridRequest {
+        lexical_weight: request.lexical_weight,
+        vector_weight: request.vector_weight,
+        limit: usize::try_from(request.limit).map_err(|_| ApiError::limit(&request_id.0))?,
+    };
+    if hybrid_request.limit > state.limits.lexical_retrieval.max_returned {
+        return Err(ApiError::limit(&request_id.0));
+    }
+    let mut lexical_limits = state.limits.lexical_retrieval.clone();
+    lexical_limits.timeout = lexical_timeout;
+    let mut vector_limits = state.limits.exact_retrieval.clone();
+    vector_limits.timeout = vector_timeout;
+    let artifact = with_engine(Arc::clone(&state), &request_id.0, move |engine| {
+        engine.retrieve_hybrid_with_proof(
+            &lexical_request,
+            &lexical_limits,
+            &vector_request,
+            &vector_limits,
+            &hybrid_request,
+        )
+    })
+    .await?;
+    let proof = hybrid_retrieval_proof_transport(&artifact, &state, &request_id.0)?;
+    bounded_json(
+        &HybridRetrievalResponseV1 {
+            outcome: hybrid_outcome_transport(artifact.proof.outcome()),
+            proof,
+        },
+        &state,
+        &request_id.0,
+    )
+}
+
 async fn download_witness(
     State(state): State<Arc<ServerState>>,
     Extension(request_id): Extension<RequestId>,
@@ -526,6 +790,40 @@ fn requested_timeout(
     Ok(Duration::from_millis(requested_ms))
 }
 
+fn requested_retrieval_timeout(
+    requested_ms: Option<u64>,
+    state: &ServerState,
+    request_id: &str,
+) -> Result<Duration, ApiError> {
+    let maximum_ms =
+        u64::try_from(state.limits.exact_retrieval.timeout.as_millis()).unwrap_or(u64::MAX);
+    let requested_ms = requested_ms.unwrap_or(maximum_ms);
+    if requested_ms == 0 {
+        return Err(ApiError::invalid(request_id));
+    }
+    if requested_ms > maximum_ms {
+        return Err(ApiError::limit(request_id));
+    }
+    Ok(Duration::from_millis(requested_ms))
+}
+
+fn requested_lexical_timeout(
+    requested_ms: Option<u64>,
+    state: &ServerState,
+    request_id: &str,
+) -> Result<Duration, ApiError> {
+    let maximum_ms =
+        u64::try_from(state.limits.lexical_retrieval.timeout.as_millis()).unwrap_or(u64::MAX);
+    let requested_ms = requested_ms.unwrap_or(maximum_ms);
+    if requested_ms == 0 {
+        return Err(ApiError::invalid(request_id));
+    }
+    if requested_ms > maximum_ms {
+        return Err(ApiError::limit(request_id));
+    }
+    Ok(Duration::from_millis(requested_ms))
+}
+
 async fn with_engine<T, F>(
     state: Arc<ServerState>,
     request_id: &str,
@@ -597,16 +895,33 @@ fn engine_error_requires_recovery(error: &EngineError) -> bool {
     ) {
         return false;
     }
-    matches!(
-        error,
+    match error {
+        EngineError::Storage(StorageError::Index { source }) => {
+            materialized_index_error_requires_recovery(source)
+        }
         EngineError::Storage(
-            StorageError::Index { .. }
-                | StorageError::CommittedButNotIndexed { .. }
-                | StorageError::StaleIndex
-                | StorageError::Snapshot { .. }
-                | StorageError::DataDirectory(_)
-                | StorageError::Log(LogError::Poisoned)
-        ) | EngineError::Proof(_)
+            StorageError::CommittedButNotIndexed { .. }
+            | StorageError::StaleIndex
+            | StorageError::Snapshot { .. }
+            | StorageError::DataDirectory(_)
+            | StorageError::Log(LogError::Poisoned),
+        )
+        | EngineError::Proof(_) => true,
+        _ => false,
+    }
+}
+
+fn materialized_index_error_requires_recovery(error: &MaterializedIndexError) -> bool {
+    !matches!(
+        error,
+        MaterializedIndexError::Vector(_)
+            | MaterializedIndexError::UnknownVectorSpace { .. }
+            | MaterializedIndexError::VectorSpaceConflict { .. }
+            | MaterializedIndexError::Lexical(_)
+            | MaterializedIndexError::LexicalIndexConflict { .. }
+            | MaterializedIndexError::UnknownLexicalIndex { .. }
+            | MaterializedIndexError::VectorCandidateBudgetExceeded { .. }
+            | MaterializedIndexError::VectorByteBudgetExceeded { .. }
     )
 }
 
@@ -645,6 +960,239 @@ fn proof_transport(
             file_bytes: artifact.snapshot.file_bytes,
         },
     })
+}
+
+fn retrieval_proof_transport(
+    artifact: &ExactRetrievalProofArtifact,
+    state: &ServerState,
+    request_id: &str,
+) -> Result<RetrievalProofV1, ApiError> {
+    let encoded = artifact
+        .proof
+        .to_bytes()
+        .map_err(|source| ApiError::from_engine(EngineError::RetrievalProof(source), request_id))?;
+    if encoded.len() > state.limits.proof_bytes
+        || artifact.snapshot.file_bytes > state.limits.witness_bytes
+    {
+        return Err(ApiError::result_too_large(request_id));
+    }
+    let anchor = artifact.proof.anchor();
+    let snapshot_digest = encode_hex(&anchor.snapshot_digest);
+    Ok(RetrievalProofV1 {
+        encoding: "base64".to_owned(),
+        data: BASE64.encode(encoded),
+        proof_digest: encode_hex(&artifact.proof.proof_digest()),
+        anchor_digest: encode_hex(&artifact.proof.anchor_digest()),
+        checkpoint_sequence: anchor.checkpoint_sequence,
+        checkpoint_digest: anchor
+            .checkpoint_digest
+            .as_ref()
+            .map(|digest| encode_hex(digest)),
+        snapshot_digest: snapshot_digest.clone(),
+        witness: WitnessV1 {
+            path: format!(
+                "/v1/witnesses/{}/{}",
+                anchor.checkpoint_sequence, snapshot_digest
+            ),
+            file_bytes: artifact.snapshot.file_bytes,
+        },
+    })
+}
+
+fn lexical_retrieval_proof_transport(
+    artifact: &LexicalRetrievalProofArtifact,
+    state: &ServerState,
+    request_id: &str,
+) -> Result<RetrievalProofV1, ApiError> {
+    retrieval_proof_transport_parts(
+        artifact.proof.to_bytes(),
+        artifact.proof.proof_digest(),
+        artifact.proof.anchor_digest(),
+        artifact.proof.anchor(),
+        artifact.snapshot.file_bytes,
+        state,
+        request_id,
+    )
+}
+
+fn hybrid_retrieval_proof_transport(
+    artifact: &HybridRetrievalProofArtifact,
+    state: &ServerState,
+    request_id: &str,
+) -> Result<RetrievalProofV1, ApiError> {
+    retrieval_proof_transport_parts(
+        artifact.proof.to_bytes(),
+        artifact.proof.proof_digest(),
+        artifact.proof.anchor_digest(),
+        artifact.proof.anchor(),
+        artifact.snapshot.file_bytes,
+        state,
+        request_id,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn retrieval_proof_transport_parts(
+    encoded: Result<Vec<u8>, hyphae_engine::RetrievalProofError>,
+    proof_digest: [u8; 32],
+    anchor_digest: [u8; 32],
+    anchor: &hyphae_engine::RetrievalProofAnchor,
+    witness_bytes: u64,
+    state: &ServerState,
+    request_id: &str,
+) -> Result<RetrievalProofV1, ApiError> {
+    let encoded = encoded
+        .map_err(|source| ApiError::from_engine(EngineError::RetrievalProof(source), request_id))?;
+    if encoded.len() > state.limits.proof_bytes || witness_bytes > state.limits.witness_bytes {
+        return Err(ApiError::result_too_large(request_id));
+    }
+    let snapshot_digest = encode_hex(&anchor.snapshot_digest);
+    Ok(RetrievalProofV1 {
+        encoding: "base64".to_owned(),
+        data: BASE64.encode(encoded),
+        proof_digest: encode_hex(&proof_digest),
+        anchor_digest: encode_hex(&anchor_digest),
+        checkpoint_sequence: anchor.checkpoint_sequence,
+        checkpoint_digest: anchor
+            .checkpoint_digest
+            .as_ref()
+            .map(|digest| encode_hex(digest)),
+        snapshot_digest: snapshot_digest.clone(),
+        witness: WitnessV1 {
+            path: format!(
+                "/v1/witnesses/{}/{}",
+                anchor.checkpoint_sequence, snapshot_digest
+            ),
+            file_bytes: witness_bytes,
+        },
+    })
+}
+
+fn exact_outcome_transport(outcome: &ExactRetrievalOutcome) -> ExactRetrievalOutcomeV1 {
+    match outcome {
+        ExactRetrievalOutcome::Matches {
+            matches,
+            scanned_candidates,
+        } => ExactRetrievalOutcomeV1::Matches {
+            matches: matches
+                .iter()
+                .map(|matched| ExactRetrievalMatchV1 {
+                    key_hex: encode_hex(&matched.key),
+                    score_nanos: matched.score_nanos,
+                })
+                .collect(),
+            scanned_candidates: *scanned_candidates,
+        },
+        ExactRetrievalOutcome::Abstained(abstention) => ExactRetrievalOutcomeV1::Abstained {
+            abstention: ExactAbstentionV1 {
+                reason: match abstention.reason {
+                    ExactAbstentionReason::NoCandidates => ExactAbstentionReasonV1::NoCandidates,
+                    ExactAbstentionReason::BelowThreshold => {
+                        ExactAbstentionReasonV1::BelowThreshold
+                    }
+                    ExactAbstentionReason::Ambiguous => ExactAbstentionReasonV1::Ambiguous,
+                },
+                best_score_nanos: abstention.best_score_nanos,
+                runner_up_score_nanos: abstention.runner_up_score_nanos,
+                scanned_candidates: abstention.scanned_candidates,
+            },
+        },
+    }
+}
+
+fn lexical_outcome_transport(outcome: &LexicalOutcome) -> LexicalRetrievalOutcomeV1 {
+    match outcome {
+        LexicalOutcome::Matches {
+            matches,
+            scanned_documents,
+            matched_documents,
+            query_tokens,
+        } => LexicalRetrievalOutcomeV1::Matches {
+            matches: matches
+                .iter()
+                .map(|matched| LexicalRetrievalMatchV1 {
+                    key_hex: encode_hex(&matched.key),
+                    score_nanos: matched.score_nanos,
+                    terms: matched
+                        .terms
+                        .iter()
+                        .map(|term| LexicalTermContributionV1 {
+                            token: term.token.clone(),
+                            document_frequency: term.document_frequency,
+                            score_nanos: term.score_nanos,
+                            fields: term
+                                .fields
+                                .iter()
+                                .map(|field| LexicalFieldContributionV1 {
+                                    path: field.path.segments().to_vec(),
+                                    term_frequency: field.term_frequency,
+                                    field_length: field.field_length,
+                                })
+                                .collect(),
+                        })
+                        .collect(),
+                })
+                .collect(),
+            scanned_documents: *scanned_documents,
+            matched_documents: *matched_documents,
+            query_tokens: query_tokens.clone(),
+        },
+        LexicalOutcome::Abstained(abstention) => LexicalRetrievalOutcomeV1::Abstained {
+            abstention: LexicalAbstentionV1 {
+                reason: match abstention.reason {
+                    LexicalAbstentionReason::NoCandidates => {
+                        LexicalAbstentionReasonV1::NoCandidates
+                    }
+                },
+                scanned_documents: abstention.scanned_documents,
+                query_tokens: abstention.query_tokens.clone(),
+            },
+        },
+    }
+}
+
+fn hybrid_outcome_transport(outcome: &HybridOutcome) -> HybridRetrievalOutcomeV1 {
+    match outcome {
+        HybridOutcome::Matches {
+            matches,
+            lexical_absence,
+            vector_absence,
+        } => HybridRetrievalOutcomeV1::Matches {
+            matches: matches
+                .iter()
+                .map(|matched| HybridRetrievalMatchV1 {
+                    key_hex: encode_hex(&matched.key),
+                    explanation: HybridExplanationV1 {
+                        lexical_rank: matched.explanation.lexical_rank,
+                        lexical_score_nanos: matched.explanation.lexical_score_nanos,
+                        vector_rank: matched.explanation.vector_rank,
+                        vector_score_nanos: matched.explanation.vector_score_nanos,
+                        lexical_contribution: matched.explanation.lexical_contribution,
+                        vector_contribution: matched.explanation.vector_contribution,
+                        fusion_score: matched.explanation.fusion_score,
+                        final_rank: matched.explanation.final_rank,
+                    },
+                })
+                .collect(),
+            lexical_absence: lexical_absence.map(hybrid_absence_transport),
+            vector_absence: vector_absence.map(hybrid_absence_transport),
+        },
+        HybridOutcome::Abstained(abstention) => HybridRetrievalOutcomeV1::Abstained {
+            abstention: HybridAbstentionV1 {
+                lexical: hybrid_absence_transport(abstention.lexical),
+                vector: hybrid_absence_transport(abstention.vector),
+            },
+        },
+    }
+}
+
+fn hybrid_absence_transport(absence: HybridBranchAbsence) -> HybridBranchAbsenceV1 {
+    match absence {
+        HybridBranchAbsence::LexicalNoCandidates => HybridBranchAbsenceV1::LexicalNoCandidates,
+        HybridBranchAbsence::VectorNoCandidates => HybridBranchAbsenceV1::VectorNoCandidates,
+        HybridBranchAbsence::VectorBelowThreshold => HybridBranchAbsenceV1::VectorBelowThreshold,
+        HybridBranchAbsence::VectorAmbiguous => HybridBranchAbsenceV1::VectorAmbiguous,
+    }
 }
 
 fn receipt(outcome: AppendOutcome) -> CommitReceiptV1 {
@@ -1015,6 +1563,101 @@ mod tests {
             "method_not_allowed",
         )
         .await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn vector_lexical_and_hybrid_routes_return_proof_bearing_results()
+    -> Result<(), Box<dyn Error>> {
+        let temporary = TestDirectory::create("retrieval-flow")?;
+        let app = HyphaeServer::open(ServerConfig::new(&temporary.path))?.test_router();
+
+        for (path, payload) in [
+            (
+                "/v1/kv/put",
+                r#"{"records":[{"key_hex":"616c706861","value":{"title":"Durable memory","body":"offline agent memory"}},{"key_hex":"62657461","value":{"title":"Fast search","body":"exact vector retrieval"}}]}"#,
+            ),
+            (
+                "/v1/lexical-indexes/define",
+                r#"{"lexical_index":{"name":"content","fields":[{"path":["title"],"weight_micros":2000000},{"path":["body"],"weight_micros":1000000}]}}"#,
+            ),
+            (
+                "/v1/vector-spaces/define",
+                r#"{"vector_space":{"name":"semantic","dimension":2,"metric":"cosine_q15_nanos"}}"#,
+            ),
+            (
+                "/v1/vectors/put",
+                r#"{"vector_space":"semantic","vectors":[{"key_hex":"616c706861","values":[32767,0]},{"key_hex":"62657461","values":[0,32767]}]}"#,
+            ),
+        ] {
+            let response = app
+                .clone()
+                .oneshot(json_request(path, payload, None)?)
+                .await?;
+            assert_eq!(response.status(), StatusCode::OK, "{path}");
+        }
+
+        let exact = app
+            .clone()
+            .oneshot(json_request(
+                "/v1/retrieve/exact",
+                r#"{"vector_space":"semantic","query":[32767,0],"limit":2,"minimum_score_nanos":-1000000000,"minimum_margin_nanos":0}"#,
+                None,
+            )?)
+            .await?;
+        assert_eq!(exact.status(), StatusCode::OK);
+        let exact: Value = serde_json::from_slice(&response_bytes(exact).await?)?;
+        assert_eq!(exact["outcome"]["matches"][0]["key_hex"], "616c706861");
+        assert_eq!(exact["proof"]["encoding"], "base64");
+
+        let lexical = app
+            .clone()
+            .oneshot(json_request(
+                "/v1/retrieve/lexical",
+                r#"{"lexical_index":"content","query":"durable memory","limit":2}"#,
+                None,
+            )?)
+            .await?;
+        assert_eq!(lexical.status(), StatusCode::OK);
+        let lexical: Value = serde_json::from_slice(&response_bytes(lexical).await?)?;
+        assert_eq!(lexical["outcome"]["matches"][0]["key_hex"], "616c706861");
+        assert_eq!(lexical["proof"]["encoding"], "base64");
+
+        let hybrid = app
+            .clone()
+            .oneshot(json_request(
+                "/v1/retrieve/hybrid",
+                r#"{"lexical":{"lexical_index":"content","query":"durable memory","limit":2},"vector":{"vector_space":"semantic","query":[32767,0],"limit":2,"minimum_score_nanos":-1000000000,"minimum_margin_nanos":0},"lexical_weight":1,"vector_weight":1,"limit":2}"#,
+                None,
+            )?)
+            .await?;
+        assert_eq!(hybrid.status(), StatusCode::OK);
+        let hybrid: Value = serde_json::from_slice(&response_bytes(hybrid).await?)?;
+        assert_eq!(hybrid["outcome"]["matches"][0]["key_hex"], "616c706861");
+        assert_eq!(
+            hybrid["outcome"]["matches"][0]["explanation"]["final_rank"],
+            1
+        );
+        assert_eq!(hybrid["proof"]["encoding"], "base64");
+
+        let wrong_dimension = app
+            .clone()
+            .oneshot(json_request(
+                "/v1/retrieve/exact",
+                r#"{"vector_space":"semantic","query":[32767],"limit":2,"minimum_score_nanos":-1000000000,"minimum_margin_nanos":0}"#,
+                None,
+            )?)
+            .await?;
+        assert_error(wrong_dimension, StatusCode::BAD_REQUEST, "invalid_request").await?;
+
+        let empty_query = app
+            .oneshot(json_request(
+                "/v1/retrieve/lexical",
+                r#"{"lexical_index":"content","query":"---","limit":2}"#,
+                None,
+            )?)
+            .await?;
+        assert_error(empty_query, StatusCode::BAD_REQUEST, "invalid_request").await?;
         Ok(())
     }
 

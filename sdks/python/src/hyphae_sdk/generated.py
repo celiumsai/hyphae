@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal, Never, NotRequired, TypeAlias, TypedDict
 
-CONTRACT_SHA256 = "830a8b2d4b4425359677c3ce3899d72d98afa73094c805948112178fe62d4970"
+CONTRACT_SHA256 = "abf4cb0e155877d22882ac3acbb6101f7e8f69c5a9ca25fce3ba846794724237"
 
 JsonValue: TypeAlias = (
     None | bool | int | str | list["JsonValue"] | dict[str, "JsonValue"]
@@ -32,6 +32,11 @@ class ApiLimitsV1(TypedDict):
     json_depth: int
     json_nodes: int
     key_bytes: int
+    lexical_candidates: int
+    lexical_documents: int
+    lexical_results: int
+    lexical_timeout_ms: int
+    lexical_tokens: int
     matched_records: int
     metrics: int
     proof_bytes: int
@@ -40,8 +45,14 @@ class ApiLimitsV1(TypedDict):
     request_body_timeout_ms: int
     response_bytes: int
     result_rows: int
+    retrieval_candidate_bytes: int
+    retrieval_candidates: int
+    retrieval_proof_bytes: int
+    retrieval_results: int
+    retrieval_timeout_ms: int
     scanned_records: int
     sort_fields: int
+    vector_dimensions: int
     witness_bytes: int
 
 class CapabilitiesV1(TypedDict):
@@ -64,16 +75,69 @@ class CursorV1(TypedDict):
     key_hex: str
     sort_values: list[JsonValue]
 
+class DefineLexicalIndexRequestV1(TypedDict):
+    """Atomic durable lexical-index definition request."""
+    lexical_index: LexicalIndexV1
+    transaction_id: NotRequired[str | None]
+
+class DefineVectorSpaceRequestV1(TypedDict):
+    """Atomic durable vector-space definition request."""
+    transaction_id: NotRequired[str | None]
+    vector_space: VectorSpaceV1
+
 class DeleteRequestV1(TypedDict):
     """Atomic durable delete batch."""
     keys_hex: list[str]
     transaction_id: NotRequired[str | None]
+
+class DeleteVectorsRequestV1(TypedDict):
+    """Atomic durable vector deletion batch."""
+    keys_hex: list[str]
+    transaction_id: NotRequired[str | None]
+    vector_space: str
 
 class ErrorV1(TypedDict):
     """Stable version 1 public error envelope."""
     code: str
     message: str
     request_id: str
+
+class ExactAbstentionV1(TypedDict):
+    """Stable exact-retrieval abstention evidence."""
+    best_score_nanos: NotRequired[int | None]
+    reason: ExactAbstentionReasonV1
+    runner_up_score_nanos: NotRequired[int | None]
+    scanned_candidates: int
+
+class ExactRetrievalMatchV1(TypedDict):
+    """One canonical exact-retrieval match."""
+    key_hex: str
+    score_nanos: int
+
+class ExactRetrievalOutcomeV1Matches(TypedDict):
+    """Accepted globally ranked matches."""
+    matches: list[ExactRetrievalMatchV1]
+    scanned_candidates: int
+    status: Literal["matches"]
+
+class ExactRetrievalOutcomeV1Abstained(TypedDict):
+    """Typed normal abstention."""
+    abstention: ExactAbstentionV1
+    status: Literal["abstained"]
+
+class ExactRetrievalRequestV1(TypedDict):
+    """Durable exact-retrieval request under reference semantics v2."""
+    limit: int
+    minimum_margin_nanos: int
+    minimum_score_nanos: int
+    query: list[int]
+    timeout_ms: NotRequired[int | None]
+    vector_space: str
+
+class ExactRetrievalResponseV1(TypedDict):
+    """Proof-bearing durable exact-retrieval response."""
+    outcome: ExactRetrievalOutcomeV1
+    proof: RetrievalProofV1
 
 class FilterV1MatchAll(TypedDict):
     """Match every record."""
@@ -146,6 +210,112 @@ class HealthV1(TypedDict):
     """Liveness or readiness response."""
     status: str
 
+class HybridAbstentionV1(TypedDict):
+    """Both hybrid branches abstained normally."""
+    lexical: HybridBranchAbsenceV1
+    vector: HybridBranchAbsenceV1
+
+class HybridExplanationV1(TypedDict):
+    """Full deterministic explanation for one hybrid result."""
+    final_rank: int
+    fusion_score: int
+    lexical_contribution: int
+    lexical_rank: NotRequired[int | None]
+    lexical_score_nanos: NotRequired[int | None]
+    vector_contribution: int
+    vector_rank: NotRequired[int | None]
+    vector_score_nanos: NotRequired[int | None]
+
+class HybridRetrievalMatchV1(TypedDict):
+    """One canonical hybrid retrieval match."""
+    explanation: HybridExplanationV1
+    key_hex: str
+
+class HybridRetrievalOutcomeV1Matches(TypedDict):
+    """Fused or explicit single-modality matches."""
+    lexical_absence: NotRequired[HybridBranchAbsenceV1 | None]
+    matches: list[HybridRetrievalMatchV1]
+    status: Literal["matches"]
+    vector_absence: NotRequired[HybridBranchAbsenceV1 | None]
+
+class HybridRetrievalOutcomeV1Abstained(TypedDict):
+    """Both branches abstained."""
+    abstention: HybridAbstentionV1
+    status: Literal["abstained"]
+
+class HybridRetrievalRequestV1(TypedDict):
+    """Complete hybrid retrieval request under deterministic RRF semantics v1."""
+    lexical: LexicalRetrievalRequestV1
+    lexical_weight: int
+    limit: int
+    vector: ExactRetrievalRequestV1
+    vector_weight: int
+
+class HybridRetrievalResponseV1(TypedDict):
+    """Proof-bearing deterministic hybrid retrieval response."""
+    outcome: HybridRetrievalOutcomeV1
+    proof: RetrievalProofV1
+
+class LexicalAbstentionV1(TypedDict):
+    """Stable lexical abstention evidence."""
+    query_tokens: list[str]
+    reason: LexicalAbstentionReasonV1
+    scanned_documents: int
+
+class LexicalFieldContributionV1(TypedDict):
+    """One configured-field contribution to a lexical term score."""
+    field_length: int
+    path: list[str]
+    term_frequency: int
+
+class LexicalFieldV1(TypedDict):
+    """One configured field in an immutable lexical-index definition."""
+    path: list[str]
+    weight_micros: int
+
+class LexicalIndexV1(TypedDict):
+    """One immutable provider-free lexical-index definition."""
+    fields: list[LexicalFieldV1]
+    name: str
+
+class LexicalRetrievalMatchV1(TypedDict):
+    """One canonical lexical retrieval match."""
+    key_hex: str
+    score_nanos: int
+    terms: list[LexicalTermContributionV1]
+
+class LexicalRetrievalOutcomeV1Matches(TypedDict):
+    """Accepted globally ranked matches."""
+    matched_documents: int
+    matches: list[LexicalRetrievalMatchV1]
+    query_tokens: list[str]
+    scanned_documents: int
+    status: Literal["matches"]
+
+class LexicalRetrievalOutcomeV1Abstained(TypedDict):
+    """Typed normal abstention."""
+    abstention: LexicalAbstentionV1
+    status: Literal["abstained"]
+
+class LexicalRetrievalRequestV1(TypedDict):
+    """Durable provider-free lexical retrieval request under semantics v1."""
+    lexical_index: str
+    limit: int
+    query: str
+    timeout_ms: NotRequired[int | None]
+
+class LexicalRetrievalResponseV1(TypedDict):
+    """Proof-bearing durable lexical retrieval response."""
+    outcome: LexicalRetrievalOutcomeV1
+    proof: RetrievalProofV1
+
+class LexicalTermContributionV1(TypedDict):
+    """One canonical query-term contribution to a lexical result."""
+    document_frequency: int
+    fields: list[LexicalFieldContributionV1]
+    score_nanos: int
+    token: str
+
 class MetricValueV1Count(TypedDict):
     """Unsigned count."""
     kind: Literal["count"]
@@ -205,6 +375,12 @@ class PutRequestV1(TypedDict):
     records: list[RecordV1]
     transaction_id: NotRequired[str | None]
 
+class PutVectorsRequestV1(TypedDict):
+    """Atomic durable vector upsert batch."""
+    transaction_id: NotRequired[str | None]
+    vector_space: str
+    vectors: list[VectorV1]
+
 class QueryRequestV1(TypedDict):
     """Complete version 1 structured query request."""
     aggregation: NotRequired[AggregationPlanV1 | None]
@@ -228,11 +404,33 @@ class RecordV1(TypedDict):
     key_hex: str
     value: JsonValue
 
+class RetrievalProofV1(TypedDict):
+    """Portable retrieval proof plus its downloadable witness reference."""
+    anchor_digest: str
+    checkpoint_digest: NotRequired[str | None]
+    checkpoint_sequence: int
+    data: str
+    encoding: str
+    proof_digest: str
+    snapshot_digest: str
+    witness: WitnessV1
+
 class SortFieldV1(TypedDict):
     """One versioned sort field."""
     direction: SortDirectionV1
     nulls: NullPlacementV1
     path: list[str]
+
+class VectorSpaceV1(TypedDict):
+    """One immutable durable vector-space definition."""
+    dimension: int
+    metric: VectorMetricV1
+    name: str
+
+class VectorV1(TypedDict):
+    """One canonical signed-Q15 vector on the wire."""
+    key_hex: str
+    values: list[int]
 
 class WitnessV1(TypedDict):
     """Download reference for one canonical logical snapshot."""
@@ -240,12 +438,19 @@ class WitnessV1(TypedDict):
     path: str
 
 CompareOperatorV1: TypeAlias = Literal["equal"] | Literal["not_equal"] | Literal["less"] | Literal["less_or_equal"] | Literal["greater"] | Literal["greater_or_equal"]
+ExactAbstentionReasonV1: TypeAlias = Literal["no_candidates"] | Literal["below_threshold"] | Literal["ambiguous"]
+ExactRetrievalOutcomeV1: TypeAlias = ExactRetrievalOutcomeV1Matches | ExactRetrievalOutcomeV1Abstained
 FilterV1: TypeAlias = FilterV1MatchAll | FilterV1Exists | FilterV1Compare | FilterV1Prefix | FilterV1Contains | FilterV1All | FilterV1Any | FilterV1Not
 GroupKeyValueV1: TypeAlias = GroupKeyValueV1Missing | GroupKeyValueV1Value
+HybridBranchAbsenceV1: TypeAlias = Literal["lexical_no_candidates"] | Literal["vector_no_candidates"] | Literal["vector_below_threshold"] | Literal["vector_ambiguous"]
+HybridRetrievalOutcomeV1: TypeAlias = HybridRetrievalOutcomeV1Matches | HybridRetrievalOutcomeV1Abstained
+LexicalAbstentionReasonV1: TypeAlias = Literal["no_candidates"]
+LexicalRetrievalOutcomeV1: TypeAlias = LexicalRetrievalOutcomeV1Matches | LexicalRetrievalOutcomeV1Abstained
 MetricValueV1: TypeAlias = MetricValueV1Count | MetricValueV1Integer | MetricValueV1Value
 NamedMetricV1: TypeAlias = NamedMetricV1Count | NamedMetricV1Sum | NamedMetricV1Min | NamedMetricV1Max
 NullPlacementV1: TypeAlias = Literal["first"] | Literal["last"]
 SortDirectionV1: TypeAlias = Literal["ascending"] | Literal["descending"]
+VectorMetricV1: TypeAlias = Literal["cosine_q15_nanos"]
 
 __all__ = [
     "AggregationPlanV1",
@@ -256,8 +461,19 @@ __all__ = [
     "CommitReceiptV1",
     "CompareOperatorV1",
     "CursorV1",
+    "DefineLexicalIndexRequestV1",
+    "DefineVectorSpaceRequestV1",
     "DeleteRequestV1",
+    "DeleteVectorsRequestV1",
     "ErrorV1",
+    "ExactAbstentionReasonV1",
+    "ExactAbstentionV1",
+    "ExactRetrievalMatchV1",
+    "ExactRetrievalOutcomeV1",
+    "ExactRetrievalOutcomeV1Abstained",
+    "ExactRetrievalOutcomeV1Matches",
+    "ExactRetrievalRequestV1",
+    "ExactRetrievalResponseV1",
     "FilterV1",
     "FilterV1All",
     "FilterV1Any",
@@ -274,7 +490,28 @@ __all__ = [
     "GroupKeyValueV1Value",
     "GroupResultV1",
     "HealthV1",
+    "HybridAbstentionV1",
+    "HybridBranchAbsenceV1",
+    "HybridExplanationV1",
+    "HybridRetrievalMatchV1",
+    "HybridRetrievalOutcomeV1",
+    "HybridRetrievalOutcomeV1Abstained",
+    "HybridRetrievalOutcomeV1Matches",
+    "HybridRetrievalRequestV1",
+    "HybridRetrievalResponseV1",
     "JsonValue",
+    "LexicalAbstentionReasonV1",
+    "LexicalAbstentionV1",
+    "LexicalFieldContributionV1",
+    "LexicalFieldV1",
+    "LexicalIndexV1",
+    "LexicalRetrievalMatchV1",
+    "LexicalRetrievalOutcomeV1",
+    "LexicalRetrievalOutcomeV1Abstained",
+    "LexicalRetrievalOutcomeV1Matches",
+    "LexicalRetrievalRequestV1",
+    "LexicalRetrievalResponseV1",
+    "LexicalTermContributionV1",
     "MetricValueV1",
     "MetricValueV1Count",
     "MetricValueV1Integer",
@@ -288,10 +525,15 @@ __all__ = [
     "NullPlacementV1",
     "ProofV1",
     "PutRequestV1",
+    "PutVectorsRequestV1",
     "QueryRequestV1",
     "QueryResponseV1",
     "RecordV1",
+    "RetrievalProofV1",
     "SortDirectionV1",
     "SortFieldV1",
+    "VectorMetricV1",
+    "VectorSpaceV1",
+    "VectorV1",
     "WitnessV1",
 ]

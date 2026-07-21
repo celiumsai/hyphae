@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PutVectorsRequestV1",
+  "description": "Atomic durable vector upsert batch.",
+  "type": "object",
+  "properties": {
+    "transaction_id": {
+      "description": "Optional UUID idempotency key; a `UUIDv7` is generated when absent.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "vector_space": {
+      "description": "Existing vector-space name.",
+      "type": "string"
+    },
+    "vectors": {
+      "description": "Nonempty atomic vector batch.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/VectorV1"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "vector_space",
+    "vectors"
+  ],
+  "$defs": {
+    "VectorV1": {
+      "description": "One canonical signed-Q15 vector on the wire.",
+      "type": "object",
+      "properties": {
+        "key_hex": {
+          "description": "Nonempty binary object key encoded as hexadecimal.",
+          "type": "string"
+        },
+        "values": {
+          "description": "Signed-Q15 elements whose length must match the space dimension.",
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "int16",
+            "maximum": 32767,
+            "minimum": -32768
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "key_hex",
+        "values"
+      ]
+    }
+  }
+}

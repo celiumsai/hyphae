@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ExactRetrievalRequestV1",
+  "description": "Durable exact-retrieval request under reference semantics v2.",
+  "type": "object",
+  "properties": {
+    "limit": {
+      "description": "Maximum returned matches.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "minimum_margin_nanos": {
+      "description": "Minimum canonical best/runner-up margin.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "minimum_score_nanos": {
+      "description": "Inclusive minimum canonical cosine score.",
+      "type": "integer",
+      "format": "int64"
+    },
+    "query": {
+      "description": "Canonical signed-Q15 query vector.",
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "format": "int16",
+        "maximum": 32767,
+        "minimum": -32768
+      }
+    },
+    "timeout_ms": {
+      "description": "Optional per-request timeout bounded by server policy.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint64",
+      "minimum": 0
+    },
+    "vector_space": {
+      "description": "Existing vector-space name.",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "vector_space",
+    "query",
+    "limit",
+    "minimum_score_nanos",
+    "minimum_margin_nanos"
+  ]
+}

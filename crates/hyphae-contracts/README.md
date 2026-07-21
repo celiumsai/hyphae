@@ -10,7 +10,7 @@ for the [Hyphae](https://hyphae.dev) `/v1` API.
 
 ```toml
 [dependencies]
-hyphae-contracts = "0.1.0"
+hyphae-contracts = "0.2.0"
 ```
 
 Use this crate when implementing a client, server adapter, or conformance tool

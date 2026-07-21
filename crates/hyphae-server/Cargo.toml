@@ -22,6 +22,7 @@ hyphae-contracts.workspace = true
 hyphae-core.workspace = true
 hyphae-engine.workspace = true
 hyphae-query.workspace = true
+hyphae-retrieval.workspace = true
 hyphae-storage.workspace = true
 serde.workspace = true
 serde_json.workspace = true

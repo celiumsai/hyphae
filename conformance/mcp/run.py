@@ -96,6 +96,13 @@ try:
         "hyphae_get",
         "hyphae_delete",
         "hyphae_query",
+        "hyphae_define_vector_space",
+        "hyphae_put_vectors",
+        "hyphae_delete_vectors",
+        "hyphae_retrieve_exact",
+        "hyphae_define_lexical_index",
+        "hyphae_retrieve_lexical",
+        "hyphae_retrieve_hybrid",
     ]
     assert all(tool["inputSchema"]["type"] == "object" for tool in listed)
     assert all(tool["outputSchema"]["type"] == "object" for tool in listed)
@@ -127,6 +134,51 @@ try:
     )
     assert [record["key_hex"] for record in second_page["rows"]] == FIXTURE["expected"]["second_page_keys"]
     assert second_page.get("next_cursor") is None
+
+    assert call("hyphae_define_vector_space", FIXTURE["define_vector_space_request"])["status"] == "committed"
+    assert call("hyphae_define_vector_space", FIXTURE["define_vector_space_request"])["status"] == "existing"
+    invalid_vectors = request(
+        "tools/call",
+        {"name": "hyphae_put_vectors", "arguments": FIXTURE["invalid_put_vectors_request"]},
+    )
+    assert invalid_vectors["isError"] is True
+    assert "invalid_request" in invalid_vectors["content"][0]["text"]
+    assert call("hyphae_put_vectors", FIXTURE["put_vectors_request"])["status"] == "committed"
+    assert call("hyphae_define_lexical_index", FIXTURE["define_lexical_index_request"])["status"] == "committed"
+
+    exact = call("hyphae_retrieve_exact", FIXTURE["exact_retrieval_request"])
+    assert exact["outcome"]["status"] == "matches"
+    assert [item["key_hex"] for item in exact["outcome"]["matches"]] == FIXTURE["expected"]["exact_retrieval_keys"]
+    ambiguous = call("hyphae_retrieve_exact", FIXTURE["ambiguous_exact_retrieval_request"])
+    assert ambiguous["outcome"]["status"] == "abstained"
+    assert ambiguous["outcome"]["abstention"]["reason"] == FIXTURE["expected"]["ambiguous_exact_reason"]
+    wrong_dimension = request(
+        "tools/call",
+        {
+            "name": "hyphae_retrieve_exact",
+            "arguments": FIXTURE["wrong_dimension_exact_retrieval_request"],
+        },
+    )
+    assert wrong_dimension["isError"] is True
+    assert "invalid_request" in wrong_dimension["content"][0]["text"]
+
+    lexical = call("hyphae_retrieve_lexical", FIXTURE["lexical_retrieval_request"])
+    assert lexical["outcome"]["status"] == "matches"
+    assert lexical["outcome"]["matches"][0]["key_hex"] == FIXTURE["expected"]["lexical_first_key"]
+    invalid_lexical = request(
+        "tools/call",
+        {
+            "name": "hyphae_retrieve_lexical",
+            "arguments": FIXTURE["invalid_lexical_retrieval_request"],
+        },
+    )
+    assert invalid_lexical["isError"] is True
+    assert "invalid_request" in invalid_lexical["content"][0]["text"]
+
+    hybrid = call("hyphae_retrieve_hybrid", FIXTURE["hybrid_retrieval_request"])
+    assert hybrid["outcome"]["status"] == "matches"
+    assert hybrid["outcome"]["matches"][0]["key_hex"] == FIXTURE["expected"]["hybrid_first_key"]
+    assert call("hyphae_delete_vectors", FIXTURE["delete_vectors_request"])["status"] == "committed"
 
     call("hyphae_delete", FIXTURE["delete_request"])
     assert call("hyphae_get", {"key_hex": "62"})["found"] is False

@@ -1,0 +1,7 @@
+{
+  "vector_space": {
+    "name": "semantic",
+    "dimension": 2,
+    "metric": "cosine_q15_nanos"
+  }
+}

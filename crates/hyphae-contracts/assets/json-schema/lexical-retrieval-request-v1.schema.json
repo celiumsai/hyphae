@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LexicalRetrievalRequestV1",
+  "description": "Durable provider-free lexical retrieval request under semantics v1.",
+  "type": "object",
+  "properties": {
+    "lexical_index": {
+      "description": "Existing lexical-index name.",
+      "type": "string"
+    },
+    "limit": {
+      "description": "Maximum returned matches.",
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "query": {
+      "description": "UTF-8 query analyzed by tokenizer v1.",
+      "type": "string"
+    },
+    "timeout_ms": {
+      "description": "Optional per-request timeout bounded by server policy.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint64",
+      "minimum": 0
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "lexical_index",
+    "query",
+    "limit"
+  ]
+}

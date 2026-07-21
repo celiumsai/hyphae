@@ -10,7 +10,7 @@ engine and its proof-bearing `/v1` API.
 
 ```toml
 [dependencies]
-hyphae-server = "0.1.0"
+hyphae-server = "0.2.0"
 ```
 
 Remote bind requires explicit authentication. Request, result, concurrency,

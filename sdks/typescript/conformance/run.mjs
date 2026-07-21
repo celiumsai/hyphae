@@ -49,6 +49,55 @@ const secondPage = (await client.query({
 assert.deepEqual(secondPage.rows.map((record) => record.key_hex), fixture.expected.second_page_keys);
 assert.equal(secondPage.next_cursor ?? null, null);
 
+assert.equal(
+  (await client.defineVectorSpace(fixture.define_vector_space_request)).value.status,
+  "committed",
+);
+assert.equal(
+  (await client.defineVectorSpace(fixture.define_vector_space_request)).value.status,
+  "existing",
+);
+await assert.rejects(
+  client.putVectors(fixture.invalid_put_vectors_request),
+  (error) => error instanceof HyphaeApiError && error.code === "invalid_request",
+);
+assert.equal((await client.putVectors(fixture.put_vectors_request)).value.status, "committed");
+assert.equal(
+  (await client.defineLexicalIndex(fixture.define_lexical_index_request)).value.status,
+  "committed",
+);
+
+const exact = (await client.retrieveExact(fixture.exact_retrieval_request)).value;
+assert.equal(exact.outcome.status, "matches");
+assert.deepEqual(
+  exact.outcome.matches?.map((match) => match.key_hex),
+  fixture.expected.exact_retrieval_keys,
+);
+assert.equal(
+  new TextDecoder().decode((await client.downloadRetrievalWitness(exact.proof)).value.slice(0, 8)),
+  "HYSNAP01",
+);
+const ambiguous = (await client.retrieveExact(fixture.ambiguous_exact_retrieval_request)).value;
+assert.equal(ambiguous.outcome.status, "abstained");
+assert.equal(ambiguous.outcome.abstention?.reason, fixture.expected.ambiguous_exact_reason);
+await assert.rejects(
+  client.retrieveExact(fixture.wrong_dimension_exact_retrieval_request),
+  (error) => error instanceof HyphaeApiError && error.code === "invalid_request",
+);
+
+const lexical = (await client.retrieveLexical(fixture.lexical_retrieval_request)).value;
+assert.equal(lexical.outcome.status, "matches");
+assert.equal(lexical.outcome.matches?.[0]?.key_hex, fixture.expected.lexical_first_key);
+await assert.rejects(
+  client.retrieveLexical(fixture.invalid_lexical_retrieval_request),
+  (error) => error instanceof HyphaeApiError && error.code === "invalid_request",
+);
+
+const hybrid = (await client.retrieveHybrid(fixture.hybrid_retrieval_request)).value;
+assert.equal(hybrid.outcome.status, "matches");
+assert.equal(hybrid.outcome.matches?.[0]?.key_hex, fixture.expected.hybrid_first_key);
+assert.equal((await client.deleteVectors(fixture.delete_vectors_request)).value.status, "committed");
+
 await client.delete(fixture.delete_request);
 assert.equal((await client.get({ key_hex: "62" })).value.found, false);
 
