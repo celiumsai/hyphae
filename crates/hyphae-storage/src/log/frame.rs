@@ -2,7 +2,7 @@
 
 use std::io;
 
-use hyphae_core::DISK_FORMAT_VERSION;
+use hyphae_core::{DISK_FORMAT_VERSION, MIN_DISK_FORMAT_VERSION};
 use uuid::Uuid;
 
 use super::LogError;
@@ -45,7 +45,14 @@ pub(super) struct Frame {
 }
 
 impl Frame {
-    pub(super) fn encode(&self) -> Result<Vec<u8>, LogError> {
+    pub(super) fn encode(&self, disk_format_version: u16) -> Result<Vec<u8>, LogError> {
+        if !(MIN_DISK_FORMAT_VERSION..=DISK_FORMAT_VERSION).contains(&disk_format_version) {
+            return Err(LogError::UnsupportedVersion {
+                offset: 0,
+                found: disk_format_version,
+                supported: DISK_FORMAT_VERSION,
+            });
+        }
         let payload_length =
             u64::try_from(self.payload.len()).map_err(|_| LogError::PayloadTooLarge {
                 length: self.payload.len(),
@@ -60,7 +67,7 @@ impl Frame {
 
         let mut encoded = vec![0_u8; HEADER_LENGTH + self.payload.len()];
         encoded[0..8].copy_from_slice(&MAGIC);
-        encoded[8..10].copy_from_slice(&DISK_FORMAT_VERSION.to_le_bytes());
+        encoded[8..10].copy_from_slice(&disk_format_version.to_le_bytes());
         encoded[10] = self.kind as u8;
         encoded[11] = 0;
         encoded[12..20].copy_from_slice(&self.sequence.to_le_bytes());
@@ -80,8 +87,9 @@ impl Frame {
         header: &[u8; HEADER_LENGTH],
         payload: Vec<u8>,
         offset: u64,
+        supported_disk_format_version: u16,
     ) -> Result<Self, LogError> {
-        let kind = validate_preamble(header, offset)?;
+        let kind = validate_preamble(header, offset, supported_disk_format_version)?;
 
         let sequence = u64::from_le_bytes(copy_array(&header[12..20]));
         let transaction_id = Uuid::from_bytes(copy_array(&header[20..36]));
@@ -108,8 +116,12 @@ impl Frame {
     }
 }
 
-pub(super) fn payload_length(header: &[u8; HEADER_LENGTH], offset: u64) -> Result<usize, LogError> {
-    validate_preamble(header, offset)?;
+pub(super) fn payload_length(
+    header: &[u8; HEADER_LENGTH],
+    offset: u64,
+    supported_disk_format_version: u16,
+) -> Result<usize, LogError> {
+    validate_preamble(header, offset, supported_disk_format_version)?;
     let raw = u64::from_le_bytes(copy_array(&header[36..44]));
     let length = usize::try_from(raw).map_err(|_| LogError::PayloadTooLarge {
         length: usize::MAX,
@@ -128,16 +140,20 @@ fn crc32c_parts(prefix: &[u8], payload: &[u8]) -> u32 {
     crc32c::crc32c_append(crc32c::crc32c(prefix), payload)
 }
 
-fn validate_preamble(header: &[u8; HEADER_LENGTH], offset: u64) -> Result<FrameKind, LogError> {
+fn validate_preamble(
+    header: &[u8; HEADER_LENGTH],
+    offset: u64,
+    supported_disk_format_version: u16,
+) -> Result<FrameKind, LogError> {
     if header[0..8] != MAGIC {
         return Err(LogError::BadMagic { offset });
     }
     let version = u16::from_le_bytes([header[8], header[9]]);
-    if version != DISK_FORMAT_VERSION {
+    if version < MIN_DISK_FORMAT_VERSION || version > supported_disk_format_version {
         return Err(LogError::UnsupportedVersion {
             offset,
             found: version,
-            supported: DISK_FORMAT_VERSION,
+            supported: supported_disk_format_version,
         });
     }
     let kind = FrameKind::try_from(header[10])
@@ -195,6 +211,8 @@ pub(super) enum ReadStatus {
 mod tests {
     use std::error::Error;
 
+    use hyphae_core::DISK_FORMAT_VERSION;
+
     use super::{Frame, FrameKind, HEADER_LENGTH};
 
     #[test]
@@ -209,10 +227,15 @@ mod tests {
             payload: b"value".to_vec(),
         };
 
-        let encoded = frame.encode()?;
+        let encoded = frame.encode(DISK_FORMAT_VERSION)?;
         let mut header = [0_u8; HEADER_LENGTH];
         header.copy_from_slice(&encoded[..HEADER_LENGTH]);
-        let decoded = Frame::decode(&header, encoded[HEADER_LENGTH..].to_vec(), 0)?;
+        let decoded = Frame::decode(
+            &header,
+            encoded[HEADER_LENGTH..].to_vec(),
+            0,
+            DISK_FORMAT_VERSION,
+        )?;
 
         assert_eq!(decoded.kind, FrameKind::Operation);
         assert_eq!(decoded.sequence, 7);

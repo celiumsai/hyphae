@@ -2,10 +2,15 @@
 
 //! Deterministic typed query model and executable reference semantics.
 
+mod document;
 mod engine;
 mod model;
 mod value;
 
+pub use document::{
+    DocumentError, MAX_DOCUMENT_BYTES, MAX_DOCUMENT_DEPTH, MAX_DOCUMENT_NODES, decode_document,
+    encode_document,
+};
 pub use engine::{
     MonotonicClock, QueryError, SystemClock, execute, execute_with_clock, validate_query,
 };

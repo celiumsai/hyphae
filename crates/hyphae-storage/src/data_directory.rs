@@ -7,7 +7,7 @@ use std::{
 };
 
 use fs4::{FileExt, TryLockError};
-use hyphae_core::DISK_FORMAT_VERSION;
+use hyphae_core::{DISK_FORMAT_VERSION, MIN_DISK_FORMAT_VERSION};
 use thiserror::Error;
 
 use crate::{DurableLog, LogError, ManifestError, OpenedLog, manifest::StorageManifest};
@@ -62,6 +62,7 @@ pub struct DataDirectory {
     root: PathBuf,
     lock: File,
     manifest: StorageManifest,
+    disk_format_version: u16,
 }
 
 impl DataDirectory {
@@ -106,7 +107,7 @@ impl DataDirectory {
             }
         }
 
-        initialize_or_validate_format(&root)?;
+        let opened_format = initialize_or_validate_format(&root)?;
         for name in REQUIRED_DIRECTORIES {
             let directory = root.join(name);
             fs::create_dir_all(&directory).map_err(|source| DataDirectoryError::Io {
@@ -122,12 +123,18 @@ impl DataDirectory {
             root,
             lock,
             manifest,
+            disk_format_version: opened_format,
         })
     }
 
     /// Returns the canonical root path.
     pub fn path(&self) -> &Path {
         &self.root
+    }
+
+    /// Returns the format currently committed by the directory marker.
+    pub fn disk_format_version(&self) -> u16 {
+        self.disk_format_version
     }
 
     /// Returns the path of the active append-only log segment.
@@ -143,10 +150,11 @@ impl DataDirectory {
     ///
     /// Returns an error for I/O failures or any complete invalid frame.
     pub fn open_log(&self) -> Result<OpenedLog<'_>, LogError> {
-        let (log, recovery) = DurableLog::open_file_at(
+        let (log, recovery) = DurableLog::open_file_at_version(
             self.active_log_path(),
             self.manifest.base_sequence,
             self.manifest.base_digest,
+            self.disk_format_version,
         )?;
         Ok(OpenedLog::new(log, recovery))
     }
@@ -175,6 +183,15 @@ impl DataDirectory {
     ) -> Result<(), DataDirectoryError> {
         manifest.write_new(&self.root)?;
         self.manifest = manifest;
+        Ok(())
+    }
+
+    pub(crate) fn promote_format(&mut self) -> Result<(), DataDirectoryError> {
+        if self.disk_format_version == DISK_FORMAT_VERSION {
+            return Ok(());
+        }
+        write_format_marker(&self.root, DISK_FORMAT_VERSION)?;
+        self.disk_format_version = DISK_FORMAT_VERSION;
         Ok(())
     }
 
@@ -217,12 +234,17 @@ impl Drop for DataDirectory {
     }
 }
 
-fn initialize_or_validate_format(root: &Path) -> Result<(), DataDirectoryError> {
+fn initialize_or_validate_format(root: &Path) -> Result<u16, DataDirectoryError> {
     let format_path = root.join("FORMAT");
     if format_path.exists() {
         return validate_format(&format_path);
     }
+    write_format_marker(root, DISK_FORMAT_VERSION)?;
+    Ok(DISK_FORMAT_VERSION)
+}
 
+fn write_format_marker(root: &Path, version: u16) -> Result<(), DataDirectoryError> {
+    let format_path = root.join("FORMAT");
     let temporary_path = root.join("FORMAT.new");
     let mut file = OpenOptions::new()
         .create(true)
@@ -234,7 +256,7 @@ fn initialize_or_validate_format(root: &Path) -> Result<(), DataDirectoryError> 
             path: temporary_path.clone(),
             source,
         })?;
-    let marker = format!("{FORMAT_PREFIX}{DISK_FORMAT_VERSION}\n");
+    let marker = format!("{FORMAT_PREFIX}{version}\n");
     file.write_all(marker.as_bytes())
         .and_then(|()| file.sync_all())
         .map_err(|source| DataDirectoryError::Io {
@@ -264,7 +286,7 @@ fn sync_directory(path: &Path) -> Result<(), DataDirectoryError> {
         })
 }
 
-fn validate_format(path: &Path) -> Result<(), DataDirectoryError> {
+fn validate_format(path: &Path) -> Result<u16, DataDirectoryError> {
     let mut marker = String::new();
     File::open(path)
         .and_then(|mut file| file.read_to_string(&mut marker))
@@ -289,10 +311,10 @@ fn validate_format(path: &Path) -> Result<(), DataDirectoryError> {
             supported: DISK_FORMAT_VERSION,
         });
     }
-    if version != DISK_FORMAT_VERSION {
+    if version < MIN_DISK_FORMAT_VERSION {
         return Err(DataDirectoryError::MalformedFormat(path.to_path_buf()));
     }
-    Ok(())
+    Ok(version)
 }
 
 fn segment_from_path(path: &Path) -> Option<u64> {
@@ -323,7 +345,7 @@ mod tests {
         assert_eq!(directory.path(), root);
         assert_eq!(
             fs::read_to_string(root.join("FORMAT"))?,
-            "hyphae-disk-format=1\n"
+            "hyphae-disk-format=2\n"
         );
         assert!(root.join("LOCK").is_file());
         for name in REQUIRED_DIRECTORIES {
@@ -347,14 +369,14 @@ mod tests {
     #[test]
     fn rejects_future_format() -> Result<(), Box<dyn Error>> {
         let temporary = TestDirectory::new("future-format")?;
-        fs::write(temporary.path().join("FORMAT"), "hyphae-disk-format=2\n")?;
+        fs::write(temporary.path().join("FORMAT"), "hyphae-disk-format=3\n")?;
 
         let result = DataDirectory::open(temporary.path());
         assert!(matches!(
             result,
             Err(DataDirectoryError::UnsupportedFormat {
-                found: 2,
-                supported: 1
+                found: 3,
+                supported: 2
             })
         ));
         Ok(())
@@ -385,7 +407,7 @@ mod tests {
         fs::create_dir_all(root.join("log"))?;
         fs::write(root.join("FORMAT"), "hyphae-disk-format=1\n")?;
         let log_path = root.join("log/00000000000000000001.hylog");
-        let (mut legacy_log, _) = DurableLog::open_file(&log_path)?;
+        let (mut legacy_log, _) = DurableLog::open_file_at_version(&log_path, 0, [0; 32], 1)?;
         legacy_log.append_transaction(Uuid::now_v7(), &[b"preserved".to_vec()])?;
         drop(legacy_log);
 

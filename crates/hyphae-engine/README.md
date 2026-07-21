@@ -10,7 +10,7 @@ autonomous, durable, and verifiable Rust data engine.
 
 ```toml
 [dependencies]
-hyphae-engine = "0.1.0"
+hyphae-engine = "0.2.0"
 ```
 
 Open one data directory, store structured records, run deterministic queries,

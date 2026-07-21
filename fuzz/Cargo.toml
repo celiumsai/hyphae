@@ -9,9 +9,13 @@ license = "Apache-2.0"
 cargo-fuzz = true
 
 [dependencies]
-hyphae-engine = { path = "../crates/hyphae-engine", version = "=0.1.0" }
-hyphae-storage = { path = "../crates/hyphae-storage", version = "=0.1.0" }
+hyphae-engine = { path = "../crates/hyphae-engine", version = "=0.2.0" }
+hyphae-core = { path = "../crates/hyphae-core", version = "=0.2.0" }
+hyphae-query = { path = "../crates/hyphae-query", version = "=0.2.0" }
+hyphae-retrieval = { path = "../crates/hyphae-retrieval", version = "=0.2.0" }
+hyphae-storage = { path = "../crates/hyphae-storage", version = "=0.2.0" }
 libfuzzer-sys = "0.4.13"
+serde_json = "1.0.151"
 
 [[bin]]
 name = "document_decode"
@@ -30,6 +34,27 @@ bench = false
 [[bin]]
 name = "snapshot_verify"
 path = "fuzz_targets/snapshot_verify.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "retrieval_proof_decode"
+path = "fuzz_targets/retrieval_proof_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "vector_request_decode"
+path = "fuzz_targets/vector_request_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "lexical_hybrid_decode"
+path = "fuzz_targets/lexical_hybrid_decode.rs"
 test = false
 doc = false
 bench = false

@@ -10,6 +10,7 @@ use std::{
     path::Path,
 };
 
+use hyphae_core::{DISK_FORMAT_VERSION, MIN_DISK_FORMAT_VERSION};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -239,6 +240,7 @@ impl OpenedLog<'_> {
 #[derive(Debug)]
 pub struct DurableLog {
     file: File,
+    disk_format_version: u16,
     next_sequence: u64,
     previous_digest: [u8; 32],
     committed: HashMap<Uuid, CommitReceipt>,
@@ -263,13 +265,30 @@ impl DurableLog {
         Self::open_file_at(path, 0, [0; 32])
     }
 
+    #[cfg(test)]
     pub(crate) fn open_file_at(
         path: impl AsRef<Path>,
         base_sequence: u64,
         base_digest: [u8; 32],
     ) -> Result<(DurableLog, RecoveryReport), LogError> {
+        Self::open_file_at_version(path, base_sequence, base_digest, DISK_FORMAT_VERSION)
+    }
+
+    pub(crate) fn open_file_at_version(
+        path: impl AsRef<Path>,
+        base_sequence: u64,
+        base_digest: [u8; 32],
+        disk_format_version: u16,
+    ) -> Result<(DurableLog, RecoveryReport), LogError> {
         if (base_sequence == 0) != (base_digest == [0; 32]) {
             return Err(LogError::InvalidAnchor);
+        }
+        if !(MIN_DISK_FORMAT_VERSION..=DISK_FORMAT_VERSION).contains(&disk_format_version) {
+            return Err(LogError::UnsupportedVersion {
+                offset: 0,
+                found: disk_format_version,
+                supported: DISK_FORMAT_VERSION,
+            });
         }
         let path = path.as_ref();
         if let Some(parent) = path.parent() {
@@ -289,7 +308,7 @@ impl DurableLog {
                 File::open(parent)?.sync_all()?;
             }
         }
-        let recovery = scan(&mut file, base_sequence, base_digest)?;
+        let recovery = scan(&mut file, base_sequence, base_digest, disk_format_version)?;
         let physical_length = file.metadata()?.len();
         if physical_length != recovery.valid_bytes {
             file.set_len(recovery.valid_bytes)?;
@@ -308,6 +327,7 @@ impl DurableLog {
             .ok_or(LogError::SequenceExhausted)?;
         let log = Self {
             file,
+            disk_format_version,
             next_sequence,
             previous_digest: recovery.last_digest,
             committed,
@@ -376,6 +396,21 @@ impl DurableLog {
         self.poisoned
     }
 
+    pub(crate) fn set_disk_format_version(
+        &mut self,
+        disk_format_version: u16,
+    ) -> Result<(), LogError> {
+        if !(MIN_DISK_FORMAT_VERSION..=DISK_FORMAT_VERSION).contains(&disk_format_version) {
+            return Err(LogError::UnsupportedVersion {
+                offset: 0,
+                found: disk_format_version,
+                supported: DISK_FORMAT_VERSION,
+            });
+        }
+        self.disk_format_version = disk_format_version;
+        Ok(())
+    }
+
     #[cfg(test)]
     pub(crate) fn inject_sync_failure(&mut self) {
         self.fail_next_sync = true;
@@ -423,7 +458,7 @@ impl DurableLog {
             digest: [0; 32],
             payload: payload.to_vec(),
         };
-        let encoded = frame.encode()?;
+        let encoded = frame.encode(self.disk_format_version)?;
         let digest = copy_array(&encoded[80..112]);
         self.file.write_all(&encoded)?;
         let written = WrittenFrame {
@@ -457,6 +492,7 @@ fn scan(
     file: &mut File,
     base_sequence: u64,
     base_digest: [u8; 32],
+    disk_format_version: u16,
 ) -> Result<RecoveryReport, LogError> {
     file.seek(SeekFrom::Start(0))?;
     let physical_length = file.metadata()?.len();
@@ -485,14 +521,14 @@ fn scan(
             }
             ReadStatus::Complete => {}
         }
-        let length = payload_length(&header, offset)?;
+        let length = payload_length(&header, offset, disk_format_version)?;
         let mut payload = vec![0_u8; length];
         if read_exact_or_tail(file, &mut payload)? != ReadStatus::Complete {
             report.truncated_tail_bytes = physical_length.saturating_sub(offset);
             break;
         }
 
-        let frame = Frame::decode(&header, payload, offset)?;
+        let frame = Frame::decode(&header, payload, offset, disk_format_version)?;
         if frame.sequence != expected_sequence {
             return Err(LogError::InvalidSequence {
                 offset,
@@ -846,7 +882,7 @@ mod tests {
         drop(opened);
 
         let mut bytes = std::fs::read(&path)?;
-        bytes[8..10].copy_from_slice(&2_u16.to_le_bytes());
+        bytes[8..10].copy_from_slice(&3_u16.to_le_bytes());
         bytes[36..44].copy_from_slice(&u64::MAX.to_le_bytes());
         std::fs::write(&path, &bytes)?;
 
@@ -854,8 +890,8 @@ mod tests {
         assert!(matches!(
             result,
             Err(LogError::UnsupportedVersion {
-                found: 2,
-                supported: 1,
+                found: 3,
+                supported: 2,
                 ..
             })
         ));

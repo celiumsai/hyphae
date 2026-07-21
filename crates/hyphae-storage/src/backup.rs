@@ -7,7 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use hyphae_core::DISK_FORMAT_VERSION;
+use hyphae_core::{DISK_FORMAT_VERSION, MIN_DISK_FORMAT_VERSION};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
@@ -115,6 +115,12 @@ struct BackupManifest {
     checkpoint_sequence: u64,
     checkpoint_digest: Option<String>,
     entry_count: u64,
+    #[serde(default)]
+    vector_space_count: u64,
+    #[serde(default)]
+    vector_count: u64,
+    #[serde(default)]
+    lexical_index_count: u64,
     receipt_count: u64,
     snapshot_digest: String,
     snapshot_file_bytes: u64,
@@ -125,11 +131,14 @@ impl BackupManifest {
         Self {
             kind: BACKUP_KIND.to_owned(),
             backup_format_version: BACKUP_FORMAT_VERSION,
-            disk_format_version: DISK_FORMAT_VERSION,
+            disk_format_version: snapshot.disk_format_version,
             snapshot_file: BACKUP_SNAPSHOT.to_owned(),
             checkpoint_sequence: snapshot.checkpoint_sequence,
             checkpoint_digest: snapshot.checkpoint_digest.map(|digest| encode_hex(&digest)),
             entry_count: snapshot.entry_count,
+            vector_space_count: snapshot.vector_space_count,
+            vector_count: snapshot.vector_count,
+            lexical_index_count: snapshot.lexical_index_count,
             receipt_count: snapshot.receipt_count,
             snapshot_digest: encode_hex(&snapshot.snapshot_digest),
             snapshot_file_bytes: snapshot.file_bytes,
@@ -139,12 +148,16 @@ impl BackupManifest {
     fn matches(&self, snapshot: &SnapshotInfo) -> bool {
         self.kind == BACKUP_KIND
             && self.backup_format_version == BACKUP_FORMAT_VERSION
-            && self.disk_format_version == DISK_FORMAT_VERSION
+            && (MIN_DISK_FORMAT_VERSION..=DISK_FORMAT_VERSION).contains(&self.disk_format_version)
+            && self.disk_format_version == snapshot.disk_format_version
             && self.snapshot_file == BACKUP_SNAPSHOT
             && self.checkpoint_sequence == snapshot.checkpoint_sequence
             && self.checkpoint_digest
                 == snapshot.checkpoint_digest.map(|digest| encode_hex(&digest))
             && self.entry_count == snapshot.entry_count
+            && self.vector_space_count == snapshot.vector_space_count
+            && self.vector_count == snapshot.vector_count
+            && self.lexical_index_count == snapshot.lexical_index_count
             && self.receipt_count == snapshot.receipt_count
             && self.snapshot_digest == encode_hex(&snapshot.snapshot_digest)
             && self.snapshot_file_bytes == snapshot.file_bytes
@@ -330,6 +343,11 @@ fn write_backup_staging(staging: &Path, snapshot: &SnapshotInfo) -> Result<(), B
 
 fn restore_into_staging(backup: &BackupInfo, staging: &Path) -> Result<SnapshotInfo, BackupError> {
     let mut directory = DataDirectory::open(staging).map_err(StorageError::from)?;
+    if backup.snapshot.disk_format_version != directory.disk_format_version() {
+        write_format_marker_for_restore(staging, backup.snapshot.disk_format_version)?;
+        drop(directory);
+        directory = DataDirectory::open(staging).map_err(StorageError::from)?;
+    }
     let checkpoint = backup.snapshot.checkpoint_sequence;
     if checkpoint > 0 {
         let snapshot_path = staging
@@ -360,10 +378,11 @@ fn restore_into_staging(backup: &BackupInfo, staging: &Path) -> Result<SnapshotI
             base_digest,
             snapshot_digest: restored.snapshot_digest,
         };
-        let (active_log, recovery) = DurableLog::open_file_at(
+        let (active_log, recovery) = DurableLog::open_file_at_version(
             staging.join("log/00000000000000000002.hylog"),
             checkpoint,
             base_digest,
+            backup.snapshot.disk_format_version,
         )
         .map_err(StorageError::from)?;
         if recovery.valid_bytes != 0 {
@@ -565,12 +584,42 @@ fn copy_new_file(
 }
 
 fn same_snapshot_identity(left: &SnapshotInfo, right: &SnapshotInfo) -> bool {
-    left.checkpoint_sequence == right.checkpoint_sequence
+    left.disk_format_version == right.disk_format_version
+        && left.checkpoint_sequence == right.checkpoint_sequence
         && left.checkpoint_digest == right.checkpoint_digest
         && left.entry_count == right.entry_count
+        && left.vector_space_count == right.vector_space_count
+        && left.vector_count == right.vector_count
+        && left.lexical_index_count == right.lexical_index_count
         && left.receipt_count == right.receipt_count
         && left.snapshot_digest == right.snapshot_digest
         && left.file_bytes == right.file_bytes
+}
+
+fn write_format_marker_for_restore(path: &Path, version: u16) -> Result<(), BackupError> {
+    if !(MIN_DISK_FORMAT_VERSION..=DISK_FORMAT_VERSION).contains(&version) {
+        return Err(BackupError::InvalidManifest {
+            path: path.join(BACKUP_MANIFEST),
+            reason: "backup uses an unsupported disk format",
+        });
+    }
+    let marker = path.join("FORMAT");
+    let mut file = OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .open(&marker)
+        .map_err(|source| BackupError::Io {
+            action: "open restored format marker",
+            path: marker.clone(),
+            source,
+        })?;
+    writeln!(file, "hyphae-disk-format={version}")
+        .and_then(|()| file.sync_all())
+        .map_err(|source| BackupError::Io {
+            action: "write restored format marker",
+            path: marker,
+            source,
+        })
 }
 
 fn snapshot_filename(sequence: u64) -> String {

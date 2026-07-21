@@ -11,7 +11,7 @@ engine.
 
 ```toml
 [dependencies]
-hyphae-core = "0.1.0"
+hyphae-core = "0.2.0"
 ```
 
 Most applications should depend on `hyphae-engine` instead. This crate exists

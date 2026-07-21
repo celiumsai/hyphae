@@ -2,11 +2,16 @@
 
 use std::{collections::BTreeSet, path::Path, time::Instant};
 
+use hyphae_core::{Q15Vector, VectorSpaceDefinition, VectorSpaceName};
 use hyphae_query::{
     ExecutionLimits, Query, QueryError, QueryResult, Record, execute, validate_query,
 };
 use hyphae_retrieval::{
-    RetrievalError, RetrievalLimits, RetrievalOutcome, RetrievalRequest, VectorRecord, retrieve,
+    DurableVectorRecord, ExactRetrievalError, ExactRetrievalLimits, ExactRetrievalOutcome,
+    ExactRetrievalRequest, HybridError, HybridOutcome, HybridRequest, LexicalError,
+    LexicalIndexDefinition, LexicalLimits, LexicalOutcome, LexicalRequest, RetrievalError,
+    RetrievalLimits, RetrievalOutcome, RetrievalRequest, VectorRecord, fuse_hybrid, retrieve,
+    retrieve_exact, retrieve_lexical_materialized, tokenize_v1,
 };
 use hyphae_storage::{
     AppendOutcome, BackupError, BackupInfo, CompactionOutcome, MAX_SCAN_PAGE_ENTRIES, Mutation,
@@ -17,7 +22,9 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::{
-    DocumentError, ProofError, ResultProof, ResultProofArtifact, decode_document, encode_document,
+    DocumentError, ExactRetrievalProof, ExactRetrievalProofArtifact, HybridRetrievalProof,
+    HybridRetrievalProofArtifact, LexicalRetrievalProof, LexicalRetrievalProofArtifact, ProofError,
+    ResultProof, ResultProofArtifact, RetrievalProofError, decode_document, encode_document,
 };
 
 /// Failure while operating the embeddable Hyphae facade.
@@ -43,13 +50,33 @@ pub enum EngineError {
     #[error(transparent)]
     Retrieval(#[from] RetrievalError),
 
+    /// Durable exact retrieval failed.
+    #[error(transparent)]
+    ExactRetrieval(#[from] ExactRetrievalError),
+
     /// Canonical result-proof creation failed.
     #[error(transparent)]
     Proof(#[from] ProofError),
 
+    /// Canonical retrieval-proof creation failed.
+    #[error(transparent)]
+    RetrievalProof(#[from] RetrievalProofError),
+
+    /// Provider-free lexical retrieval failed.
+    #[error(transparent)]
+    Lexical(#[from] LexicalError),
+
+    /// Deterministic hybrid fusion failed.
+    #[error(transparent)]
+    Hybrid(#[from] HybridError),
+
     /// One atomic document batch repeats a key.
     #[error("atomic document batch contains a duplicate key")]
     DuplicateDocumentKey,
+
+    /// An atomic batch must contain at least one item.
+    #[error("atomic batch must contain at least one item")]
+    EmptyBatch,
 }
 
 /// Newly opened embeddable engine and durable recovery evidence.
@@ -116,6 +143,9 @@ impl HyphaeEngine {
         transaction_id: Uuid,
         records: &[Record],
     ) -> Result<AppendOutcome, EngineError> {
+        if records.is_empty() {
+            return Err(EngineError::EmptyBatch);
+        }
         let mut keys = BTreeSet::new();
         let mut mutations = Vec::with_capacity(records.len());
         for record in records {
@@ -157,6 +187,9 @@ impl HyphaeEngine {
         transaction_id: Uuid,
         keys: &[&[u8]],
     ) -> Result<AppendOutcome, EngineError> {
+        if keys.is_empty() {
+            return Err(EngineError::EmptyBatch);
+        }
         let mut unique = BTreeSet::new();
         let mut mutations = Vec::with_capacity(keys.len());
         for key in keys {
@@ -294,6 +327,296 @@ impl HyphaeEngine {
         Ok(retrieve(shards, request, limits)?)
     }
 
+    /// Defines one immutable durable named vector space.
+    ///
+    /// Repeating the identical definition is idempotent; changing dimension
+    /// or metric for an existing name fails before the log append.
+    ///
+    /// # Errors
+    ///
+    /// Returns an idempotency, immutable-definition, or durable storage error.
+    pub fn define_vector_space(
+        &mut self,
+        transaction_id: Uuid,
+        definition: VectorSpaceDefinition,
+    ) -> Result<AppendOutcome, EngineError> {
+        Ok(self
+            .storage
+            .write(transaction_id, &[Mutation::define_vector_space(definition)])?)
+    }
+
+    /// Atomically stores vectors in one named space.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error before append for duplicate keys, an unknown space,
+    /// wrong dimensions, invalid keys, or invalid vectors.
+    pub fn put_vectors(
+        &mut self,
+        transaction_id: Uuid,
+        space: &VectorSpaceName,
+        vectors: &[(Vec<u8>, Q15Vector)],
+    ) -> Result<AppendOutcome, EngineError> {
+        if vectors.is_empty() {
+            return Err(EngineError::EmptyBatch);
+        }
+        let mut keys = BTreeSet::new();
+        let mut mutations = Vec::with_capacity(vectors.len());
+        for (key, vector) in vectors {
+            if !keys.insert(key.as_slice()) {
+                return Err(EngineError::DuplicateDocumentKey);
+            }
+            mutations.push(Mutation::upsert_vector(
+                space.clone(),
+                key.clone(),
+                vector.clone(),
+            ));
+        }
+        Ok(self.storage.write(transaction_id, &mutations)?)
+    }
+
+    /// Atomically deletes vectors from one named space.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error before append for duplicate/invalid keys or an unknown
+    /// vector space.
+    pub fn delete_vectors(
+        &mut self,
+        transaction_id: Uuid,
+        space: &VectorSpaceName,
+        keys: &[&[u8]],
+    ) -> Result<AppendOutcome, EngineError> {
+        if keys.is_empty() {
+            return Err(EngineError::EmptyBatch);
+        }
+        let mut unique = BTreeSet::new();
+        let mut mutations = Vec::with_capacity(keys.len());
+        for key in keys {
+            if !unique.insert(*key) {
+                return Err(EngineError::DuplicateDocumentKey);
+            }
+            mutations.push(Mutation::delete_vector(space.clone(), *key));
+        }
+        Ok(self.storage.write(transaction_id, &mutations)?)
+    }
+
+    /// Executes exact retrieval over the latest caught-up durable vector
+    /// state. Storage budgets are enforced before returning candidates, then
+    /// the canonical executor applies scoring and timeout policy.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for an unknown space, wrong query dimension, exhausted
+    /// budget, timeout, stale storage, or malformed durable state. No partial
+    /// ranking is returned.
+    pub fn retrieve_exact(
+        &self,
+        request: &ExactRetrievalRequest,
+        limits: &ExactRetrievalLimits,
+    ) -> Result<ExactRetrievalOutcome, EngineError> {
+        let Some(definition) = self.storage.vector_space(&request.vector_space)? else {
+            return Err(StorageError::from(
+                hyphae_storage::MaterializedIndexError::UnknownVectorSpace {
+                    name: request.vector_space.as_str().to_owned(),
+                },
+            )
+            .into());
+        };
+        definition
+            .validate_vector(&request.query)
+            .map_err(|source| {
+                StorageError::from(hyphae_storage::MaterializedIndexError::from(source))
+            })?;
+        let candidates = self.storage.vector_entries(
+            &request.vector_space,
+            limits.max_candidates,
+            limits.max_candidate_bytes,
+        )?;
+        let candidates = candidates
+            .into_iter()
+            .map(|entry| DurableVectorRecord {
+                key: entry.key,
+                vector: entry.vector,
+            })
+            .collect::<Vec<_>>();
+        Ok(retrieve_exact(&candidates, request, limits)?)
+    }
+
+    /// Executes exact durable retrieval and binds its complete outcome to a
+    /// canonical format-2 snapshot witness.
+    ///
+    /// # Errors
+    ///
+    /// Returns any exact-retrieval, snapshot, or retrieval-proof error. No
+    /// proof is emitted for failed or partial execution.
+    pub fn retrieve_exact_with_proof(
+        &self,
+        request: &ExactRetrievalRequest,
+        limits: &ExactRetrievalLimits,
+    ) -> Result<ExactRetrievalProofArtifact, EngineError> {
+        let outcome = self.retrieve_exact(request, limits)?;
+        let snapshot = self.snapshot()?;
+        let proof = ExactRetrievalProof::new(&snapshot, request.clone(), outcome)?;
+        Ok(ExactRetrievalProofArtifact { proof, snapshot })
+    }
+
+    /// Defines one immutable provider-free lexical index.
+    ///
+    /// Repeating the identical definition is idempotent. Any change to an
+    /// existing definition fails before the durable append.
+    ///
+    /// # Errors
+    ///
+    /// Returns an immutable-definition, idempotency, or storage error.
+    pub fn define_lexical_index(
+        &mut self,
+        transaction_id: Uuid,
+        definition: LexicalIndexDefinition,
+    ) -> Result<AppendOutcome, EngineError> {
+        Ok(self.storage.write(
+            transaction_id,
+            &[Mutation::define_lexical_index(definition)],
+        )?)
+    }
+
+    /// Executes provider-free lexical retrieval from the rebuildable durable
+    /// posting projection.
+    ///
+    /// Posting lookup, candidate materialization, and reference scoring share
+    /// one lexical timeout and never return a partial ranking.
+    ///
+    /// # Errors
+    ///
+    /// Returns an unknown-index, document, budget, timeout, or storage error.
+    pub fn retrieve_lexical(
+        &self,
+        request: &LexicalRequest,
+        limits: &LexicalLimits,
+    ) -> Result<LexicalOutcome, EngineError> {
+        let Some(definition) = self.storage.lexical_index(&request.index)? else {
+            return Err(StorageError::from(
+                hyphae_storage::MaterializedIndexError::UnknownLexicalIndex {
+                    name: request.index.as_str().to_owned(),
+                },
+            )
+            .into());
+        };
+        let query_tokens = tokenize_v1(&request.query)
+            .into_iter()
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        if query_tokens.is_empty() {
+            return Err(LexicalError::EmptyQuery.into());
+        }
+        let started = Instant::now();
+        let corpus = match self.storage.lexical_corpus(
+            &definition,
+            &query_tokens,
+            limits.max_candidates,
+            limits.timeout,
+        ) {
+            Ok(corpus) => corpus,
+            Err(StorageError::Index { source }) => match *source {
+                hyphae_storage::MaterializedIndexError::Lexical(error) => {
+                    return Err(error.into());
+                }
+                source => {
+                    return Err(StorageError::Index {
+                        source: Box::new(source),
+                    }
+                    .into());
+                }
+            },
+            Err(error) => return Err(error.into()),
+        };
+        let Some(timeout) = limits.timeout.checked_sub(started.elapsed()) else {
+            return Err(LexicalError::TimedOut.into());
+        };
+        if timeout.is_zero() {
+            return Err(LexicalError::TimedOut.into());
+        }
+        let execution_limits = LexicalLimits {
+            timeout,
+            ..limits.clone()
+        };
+        Ok(retrieve_lexical_materialized(
+            &corpus,
+            &definition,
+            request,
+            &execution_limits,
+        )?)
+    }
+
+    /// Executes lexical retrieval and binds the complete outcome to a
+    /// canonical format-2 snapshot witness.
+    ///
+    /// # Errors
+    ///
+    /// Returns any lexical, snapshot, or retrieval-proof error.
+    pub fn retrieve_lexical_with_proof(
+        &self,
+        request: &LexicalRequest,
+        limits: &LexicalLimits,
+    ) -> Result<LexicalRetrievalProofArtifact, EngineError> {
+        let outcome = self.retrieve_lexical(request, limits)?;
+        let snapshot = self.snapshot()?;
+        let proof = LexicalRetrievalProof::new(&snapshot, request.clone(), outcome)?;
+        Ok(LexicalRetrievalProofArtifact { proof, snapshot })
+    }
+
+    /// Executes both durable branches and fuses their complete outcomes using
+    /// deterministic RRF semantics.
+    ///
+    /// # Errors
+    ///
+    /// Returns any lexical, exact-vector, storage, budget, timeout, or fusion
+    /// error. Branch failures never silently downgrade to single-modality
+    /// success.
+    pub fn retrieve_hybrid(
+        &self,
+        lexical_request: &LexicalRequest,
+        lexical_limits: &LexicalLimits,
+        vector_request: &ExactRetrievalRequest,
+        vector_limits: &ExactRetrievalLimits,
+        hybrid_request: &HybridRequest,
+    ) -> Result<HybridOutcome, EngineError> {
+        let lexical = self.retrieve_lexical(lexical_request, lexical_limits)?;
+        let vector = self.retrieve_exact(vector_request, vector_limits)?;
+        Ok(fuse_hybrid(&lexical, &vector, hybrid_request)?)
+    }
+
+    /// Executes lexical and exact-vector branches, fuses their complete
+    /// outcomes, and binds all three outcomes to one canonical snapshot.
+    ///
+    /// # Errors
+    ///
+    /// Returns any branch, fusion, snapshot, or retrieval-proof error.
+    pub fn retrieve_hybrid_with_proof(
+        &self,
+        lexical_request: &LexicalRequest,
+        lexical_limits: &LexicalLimits,
+        vector_request: &ExactRetrievalRequest,
+        vector_limits: &ExactRetrievalLimits,
+        hybrid_request: &HybridRequest,
+    ) -> Result<HybridRetrievalProofArtifact, EngineError> {
+        let lexical_outcome = self.retrieve_lexical(lexical_request, lexical_limits)?;
+        let vector_outcome = self.retrieve_exact(vector_request, vector_limits)?;
+        let outcome = fuse_hybrid(&lexical_outcome, &vector_outcome, hybrid_request)?;
+        let snapshot = self.snapshot()?;
+        let proof = HybridRetrievalProof::new(
+            &snapshot,
+            lexical_request.clone(),
+            lexical_outcome,
+            vector_request.clone(),
+            vector_outcome,
+            hybrid_request.clone(),
+            outcome,
+        )?;
+        Ok(HybridRetrievalProofArtifact { proof, snapshot })
+    }
+
     /// Creates or reuses a verified logical snapshot.
     ///
     /// # Errors
@@ -347,13 +670,20 @@ impl HyphaeEngine {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::BTreeMap, fs, path::PathBuf};
+    use std::{collections::BTreeMap, fs, path::PathBuf, time::Duration};
 
+    use hyphae_core::{Q15Vector, VectorSpaceDefinition, VectorSpaceName};
     use hyphae_query::{
         AggregationPlan, CompareOperator, FieldPath, Filter, Metric, MetricValue, NamedMetric,
         NullPlacement, SortDirection, SortField, Value,
     };
     use uuid::Uuid;
+
+    use hyphae_retrieval::{
+        ExactRetrievalLimits, ExactRetrievalOutcome, ExactRetrievalRequest, HybridOutcome,
+        HybridRequest, LexicalField, LexicalIndexDefinition, LexicalLimits, LexicalOutcome,
+        LexicalRequest, retrieve_lexical,
+    };
 
     use super::{EngineError, ExecutionLimits, HyphaeEngine, Query, Record};
 
@@ -482,6 +812,422 @@ mod tests {
                 hyphae_query::QueryError::ScannedBudgetExceeded { maximum: 1 }
             ))
         ));
+        Ok(())
+    }
+
+    #[test]
+    fn durable_vectors_survive_compaction_backup_restore_and_index_rebuild()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temporary = TestDirectory::new("durable-vectors-lifecycle")?;
+        let root = temporary.path().join("data");
+        let backup = temporary.path().join("backup");
+        let restored = temporary.path().join("restored");
+        let space = VectorSpaceName::new("semantic.v1")?;
+        let definition = VectorSpaceDefinition::cosine(space.clone(), 3)?;
+        let mut opened = HyphaeEngine::open(&root)?;
+        opened
+            .engine
+            .define_vector_space(Uuid::now_v7(), definition.clone())?;
+        opened.engine.put_vectors(
+            Uuid::now_v7(),
+            &space,
+            &[
+                (b"alpha".to_vec(), Q15Vector::new(vec![32_767, 0, 0])?),
+                (b"beta".to_vec(), Q15Vector::new(vec![0, 32_767, 0])?),
+            ],
+        )?;
+        let request = ExactRetrievalRequest {
+            vector_space: space.clone(),
+            query: Q15Vector::new(vec![32_767, 0, 0])?,
+            limit: 2,
+            minimum_score_nanos: -1_000_000_000,
+            minimum_margin_nanos: 0,
+        };
+        let limits = ExactRetrievalLimits {
+            max_candidates: 10,
+            max_candidate_bytes: 64 * 1024,
+            max_returned: 10,
+            timeout: Duration::from_secs(1),
+        };
+        let expected = opened.engine.retrieve_exact(&request, &limits)?;
+        assert!(matches!(
+            &expected,
+            ExactRetrievalOutcome::Matches { matches, .. }
+                if matches.first().is_some_and(|matched| matched.key == b"alpha")
+        ));
+        opened.engine.compact()?;
+        assert_eq!(opened.engine.retrieve_exact(&request, &limits)?, expected);
+        opened.engine.backup(&backup)?;
+        drop(opened);
+
+        let reopened = HyphaeEngine::open(&root)?;
+        assert_eq!(reopened.engine.retrieve_exact(&request, &limits)?, expected);
+        drop(reopened);
+        fs::remove_file(root.join("indexes/primary.redb"))?;
+        let rebuilt = HyphaeEngine::open(&root)?;
+        assert_eq!(rebuilt.engine.retrieve_exact(&request, &limits)?, expected);
+        drop(rebuilt);
+
+        HyphaeEngine::restore_backup(&backup, &restored)?;
+        let restored = HyphaeEngine::open(&restored)?;
+        assert_eq!(restored.engine.retrieve_exact(&request, &limits)?, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn mixed_validity_vector_batch_is_rejected_without_partial_visibility()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temporary = TestDirectory::new("vector-batch-rollback")?;
+        let root = temporary.path().join("data");
+        let space = VectorSpaceName::new("semantic")?;
+        let mut opened = HyphaeEngine::open(&root)?;
+        opened.engine.define_vector_space(
+            Uuid::now_v7(),
+            VectorSpaceDefinition::cosine(space.clone(), 2)?,
+        )?;
+        let result = opened.engine.put_vectors(
+            Uuid::now_v7(),
+            &space,
+            &[
+                (b"valid".to_vec(), Q15Vector::new(vec![32_767, 0])?),
+                (b"wrong".to_vec(), Q15Vector::new(vec![32_767, 0, 0])?),
+            ],
+        );
+        assert!(result.is_err());
+        let request = ExactRetrievalRequest {
+            vector_space: space,
+            query: Q15Vector::new(vec![32_767, 0])?,
+            limit: 10,
+            minimum_score_nanos: -1_000_000_000,
+            minimum_margin_nanos: 0,
+        };
+        assert!(matches!(
+            opened
+                .engine
+                .retrieve_exact(&request, &ExactRetrievalLimits::default())?,
+            ExactRetrievalOutcome::Abstained(_)
+        ));
+        Ok(())
+    }
+
+    fn lexical_value(title: &str, body: &str) -> Value {
+        Value::Object(BTreeMap::from([
+            ("body".to_owned(), Value::String(body.to_owned())),
+            ("title".to_owned(), Value::String(title.to_owned())),
+        ]))
+    }
+
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn lexical_and_hybrid_retrieval_survive_every_durable_lifecycle()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temporary = TestDirectory::new("lexical-hybrid-lifecycle")?;
+        let root = temporary.path().join("data");
+        let backup = temporary.path().join("backup");
+        let restored = temporary.path().join("restored");
+        let name = VectorSpaceName::new("documents.v1")?;
+        let lexical_definition = LexicalIndexDefinition::new(
+            name.clone(),
+            vec![
+                LexicalField {
+                    path: FieldPath::field("body"),
+                    weight_micros: 1_000_000,
+                },
+                LexicalField {
+                    path: FieldPath::field("title"),
+                    weight_micros: 2_000_000,
+                },
+            ],
+        )?;
+        let vector_definition = VectorSpaceDefinition::cosine(name.clone(), 2)?;
+        let mut opened = HyphaeEngine::open(&root)?;
+        opened.engine.put_records(
+            Uuid::now_v7(),
+            &[
+                Record::new(b"alpha", lexical_value("Durable Rust", "offline engine")),
+                Record::new(b"beta", lexical_value("Other", "durable storage")),
+                Record::new(b"gamma", lexical_value("Unrelated", "nothing")),
+            ],
+        )?;
+        opened
+            .engine
+            .define_lexical_index(Uuid::now_v7(), lexical_definition)?;
+        opened
+            .engine
+            .define_vector_space(Uuid::now_v7(), vector_definition)?;
+        opened.engine.put_vectors(
+            Uuid::now_v7(),
+            &name,
+            &[
+                (b"alpha".to_vec(), Q15Vector::new(vec![32_767, 0])?),
+                (b"beta".to_vec(), Q15Vector::new(vec![30_000, 2_000])?),
+                (b"gamma".to_vec(), Q15Vector::new(vec![0, 32_767])?),
+            ],
+        )?;
+        let lexical_request = LexicalRequest {
+            index: name.clone(),
+            query: "durable".into(),
+            limit: 3,
+        };
+        let lexical_limits = LexicalLimits {
+            max_documents: 10,
+            max_tokens: 100,
+            max_candidates: 10,
+            max_returned: 10,
+            timeout: Duration::from_secs(2),
+        };
+        let vector_request = ExactRetrievalRequest {
+            vector_space: name,
+            query: Q15Vector::new(vec![32_767, 0])?,
+            limit: 3,
+            minimum_score_nanos: -1_000_000_000,
+            minimum_margin_nanos: 0,
+        };
+        let vector_limits = ExactRetrievalLimits {
+            max_candidates: 10,
+            max_candidate_bytes: 64 * 1024,
+            max_returned: 10,
+            timeout: Duration::from_secs(2),
+        };
+        let hybrid_request = HybridRequest {
+            lexical_weight: 1,
+            vector_weight: 1,
+            limit: 3,
+        };
+        let expected_lexical = opened
+            .engine
+            .retrieve_lexical(&lexical_request, &lexical_limits)?;
+        assert!(matches!(
+            &expected_lexical,
+            LexicalOutcome::Matches { matches, .. }
+                if matches.first().is_some_and(|matched| matched.key == b"alpha")
+        ));
+        let expected_hybrid = opened.engine.retrieve_hybrid(
+            &lexical_request,
+            &lexical_limits,
+            &vector_request,
+            &vector_limits,
+            &hybrid_request,
+        )?;
+        assert!(matches!(
+            &expected_hybrid,
+            HybridOutcome::Matches { matches, .. }
+                if matches.first().is_some_and(|matched| matched.key == b"alpha")
+        ));
+        opened.engine.compact()?;
+        assert_eq!(
+            opened
+                .engine
+                .retrieve_lexical(&lexical_request, &lexical_limits)?,
+            expected_lexical
+        );
+        opened.engine.backup(&backup)?;
+        drop(opened);
+
+        let reopened = HyphaeEngine::open(&root)?;
+        assert_eq!(
+            reopened.engine.retrieve_hybrid(
+                &lexical_request,
+                &lexical_limits,
+                &vector_request,
+                &vector_limits,
+                &hybrid_request,
+            )?,
+            expected_hybrid
+        );
+        drop(reopened);
+        fs::remove_file(root.join("indexes/primary.redb"))?;
+        let rebuilt = HyphaeEngine::open(&root)?;
+        assert_eq!(
+            rebuilt
+                .engine
+                .retrieve_lexical(&lexical_request, &lexical_limits)?,
+            expected_lexical
+        );
+        drop(rebuilt);
+
+        HyphaeEngine::restore_backup(&backup, &restored)?;
+        let restored = HyphaeEngine::open(&restored)?;
+        assert_eq!(
+            restored.engine.retrieve_hybrid(
+                &lexical_request,
+                &lexical_limits,
+                &vector_request,
+                &vector_limits,
+                &hybrid_request,
+            )?,
+            expected_hybrid
+        );
+        assert_eq!(restored.engine.snapshot()?.lexical_index_count, 1);
+        Ok(())
+    }
+
+    #[test]
+    fn lexical_document_budget_returns_no_partial_ranking() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let temporary = TestDirectory::new("lexical-budget")?;
+        let name = VectorSpaceName::new("documents")?;
+        let mut opened = HyphaeEngine::open(temporary.path().join("data"))?;
+        opened.engine.put_records(
+            Uuid::now_v7(),
+            &[
+                Record::new(b"a", lexical_value("one", "durable")),
+                Record::new(b"b", lexical_value("two", "durable")),
+            ],
+        )?;
+        opened.engine.define_lexical_index(
+            Uuid::now_v7(),
+            LexicalIndexDefinition::new(
+                name.clone(),
+                vec![LexicalField {
+                    path: FieldPath::field("body"),
+                    weight_micros: 1_000_000,
+                }],
+            )?,
+        )?;
+        let outcome = opened.engine.retrieve_lexical(
+            &LexicalRequest {
+                index: name,
+                query: "durable".into(),
+                limit: 2,
+            },
+            &LexicalLimits {
+                max_documents: 1,
+                ..LexicalLimits::default()
+            },
+        );
+        assert!(matches!(
+            outcome,
+            Err(EngineError::Lexical(
+                hyphae_retrieval::LexicalError::DocumentBudgetExceeded { maximum: 1 }
+            ))
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn lexical_materialization_timeout_returns_typed_timeout()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temporary = TestDirectory::new("lexical-timeout")?;
+        let name = VectorSpaceName::new("documents.timeout")?;
+        let mut opened = HyphaeEngine::open(temporary.path().join("data"))?;
+        opened.engine.put_record(
+            Uuid::now_v7(),
+            &Record::new(b"a", lexical_value("one", "durable")),
+        )?;
+        opened.engine.define_lexical_index(
+            Uuid::now_v7(),
+            LexicalIndexDefinition::new(
+                name.clone(),
+                vec![LexicalField {
+                    path: FieldPath::field("body"),
+                    weight_micros: 1_000_000,
+                }],
+            )?,
+        )?;
+
+        let outcome = opened.engine.retrieve_lexical(
+            &LexicalRequest {
+                index: name,
+                query: "durable".into(),
+                limit: 1,
+            },
+            &LexicalLimits {
+                timeout: Duration::ZERO,
+                ..LexicalLimits::default()
+            },
+        );
+
+        assert!(matches!(
+            outcome,
+            Err(EngineError::Lexical(
+                hyphae_retrieval::LexicalError::TimedOut
+            ))
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn materialized_lexical_index_matches_reference_after_update_delete_and_rebuild()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temporary = TestDirectory::new("lexical-reference-equivalence")?;
+        let root = temporary.path().join("data");
+        let name = VectorSpaceName::new("documents.reference")?;
+        let definition = LexicalIndexDefinition::new(
+            name.clone(),
+            vec![
+                LexicalField {
+                    path: FieldPath::field("body"),
+                    weight_micros: 1_000_000,
+                },
+                LexicalField {
+                    path: FieldPath::field("title"),
+                    weight_micros: 2_000_000,
+                },
+            ],
+        )?;
+        let request = LexicalRequest {
+            index: name,
+            query: "durable rust engine".into(),
+            limit: 10,
+        };
+        let limits = LexicalLimits {
+            max_documents: 100,
+            max_tokens: 10_000,
+            max_candidates: 100,
+            max_returned: 100,
+            timeout: Duration::from_secs(2),
+        };
+        let mut records = vec![
+            Record::new(
+                b"alpha",
+                lexical_value("Durable Rust", "offline engine durable durable"),
+            ),
+            Record::new(
+                b"beta",
+                lexical_value("Storage Engine", "rust transactions"),
+            ),
+            Record::new(b"gamma", lexical_value("Unrelated", "nothing relevant")),
+            Record::new(
+                b"delta",
+                lexical_value("Rust Engine", "durable local search"),
+            ),
+        ];
+        let mut opened = HyphaeEngine::open(&root)?;
+        opened.engine.put_records(Uuid::now_v7(), &records)?;
+        opened
+            .engine
+            .define_lexical_index(Uuid::now_v7(), definition.clone())?;
+
+        let reference = retrieve_lexical(&records, &definition, &request, &limits)?;
+        assert_eq!(
+            opened.engine.retrieve_lexical(&request, &limits)?,
+            reference
+        );
+
+        let updated = Record::new(
+            b"gamma",
+            lexical_value("Durable Engine", "rust rust offline"),
+        );
+        opened.engine.put_record(Uuid::now_v7(), &updated)?;
+        records.retain(|record| record.key != b"gamma");
+        records.push(updated);
+        opened.engine.delete_record(Uuid::now_v7(), b"beta")?;
+        records.retain(|record| record.key != b"beta");
+
+        let updated_reference = retrieve_lexical(&records, &definition, &request, &limits)?;
+        assert_eq!(
+            opened.engine.retrieve_lexical(&request, &limits)?,
+            updated_reference
+        );
+        drop(opened);
+
+        fs::remove_file(root.join("indexes/primary.redb"))?;
+        let rebuilt = HyphaeEngine::open(&root)?;
+        assert_eq!(
+            rebuilt.engine.retrieve_lexical(&request, &limits)?,
+            updated_reference
+        );
         Ok(())
     }
 }

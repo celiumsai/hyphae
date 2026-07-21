@@ -6,7 +6,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use hyphae_core::DISK_FORMAT_VERSION;
+use hyphae_core::{DISK_FORMAT_VERSION, MIN_DISK_FORMAT_VERSION};
 use thiserror::Error;
 
 const MAGIC: [u8; 8] = *b"HYMNFST1";
@@ -187,7 +187,8 @@ fn decode_manifest(
             supported: MANIFEST_FORMAT_VERSION,
         });
     }
-    if u16::from_le_bytes(copy_array(&encoded[10..12])) != DISK_FORMAT_VERSION {
+    let disk_format = u16::from_le_bytes(copy_array(&encoded[10..12]));
+    if !(MIN_DISK_FORMAT_VERSION..=DISK_FORMAT_VERSION).contains(&disk_format) {
         return Err(invalid(path, "disk format mismatch"));
     }
     if u32::from_le_bytes(copy_array(&encoded[12..16])) != 0 {

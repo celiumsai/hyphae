@@ -2,6 +2,8 @@
 
 use std::path::{Path, PathBuf};
 
+use hyphae_core::{VectorSpaceDefinition, VectorSpaceName};
+use hyphae_retrieval::{LexicalIndexDefinition, LexicalMaterializedCorpus};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -13,7 +15,7 @@ use crate::{
     AppendOutcome, BackupError, BackupInfo, CommitReceipt, DataDirectory, DataDirectoryError,
     DurableLog, LogError, MaterializedIndexError, Mutation, MutationError, RecoveredTransaction,
     RecoveryReport, SnapshotError, SnapshotInfo,
-    index::MaterializedIndex,
+    index::{MaterializedIndex, VectorEntry},
     manifest::StorageManifest,
     mutation::validate_key,
     snapshot::{create_snapshot, verify_snapshot},
@@ -167,8 +169,12 @@ impl StorageEngine {
         let index_path = directory.path().join("indexes").join("primary.redb");
         ensure_snapshot_base(&directory, &index_path)?;
         let (base_sequence, base_digest) = directory.log_anchor();
-        let (log, log_recovery) =
-            DurableLog::open_file_at(directory.active_log_path(), base_sequence, base_digest)?;
+        let (log, log_recovery) = DurableLog::open_file_at_version(
+            directory.active_log_path(),
+            base_sequence,
+            base_digest,
+            directory.disk_format_version(),
+        )?;
         let index = MaterializedIndex::open(index_path)?;
         let replayed_transactions = index.replay(&log_recovery)?;
         let _cleanup_complete = directory.cleanup_retired_logs();
@@ -220,6 +226,20 @@ impl StorageEngine {
     ) -> Result<AppendOutcome, StorageError> {
         if self.index_stale {
             return Err(StorageError::StaleIndex);
+        }
+        self.index.validate_mutations(mutations)?;
+        if mutations.iter().any(|mutation| {
+            matches!(
+                mutation,
+                Mutation::DefineVectorSpace { .. }
+                    | Mutation::UpsertVector { .. }
+                    | Mutation::DeleteVector { .. }
+                    | Mutation::DefineLexicalIndex { .. }
+            )
+        }) {
+            self.directory.promote_format()?;
+            self.log
+                .set_disk_format_version(self.directory.disk_format_version())?;
         }
         let operations = mutations
             .iter()
@@ -276,6 +296,77 @@ impl StorageEngine {
         Ok(self.index.get(key)?)
     }
 
+    /// Returns an immutable vector-space definition when present.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a stale handle or malformed materialized state.
+    pub fn vector_space(
+        &self,
+        name: &VectorSpaceName,
+    ) -> Result<Option<VectorSpaceDefinition>, StorageError> {
+        if self.index_stale {
+            return Err(StorageError::StaleIndex);
+        }
+        Ok(self.index.vector_space(name)?)
+    }
+
+    /// Returns an immutable lexical-index definition when present.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a stale handle or malformed materialized state.
+    pub fn lexical_index(
+        &self,
+        name: &VectorSpaceName,
+    ) -> Result<Option<LexicalIndexDefinition>, StorageError> {
+        if self.index_stale {
+            return Err(StorageError::StaleIndex);
+        }
+        Ok(self.index.lexical_index(name)?)
+    }
+
+    /// Reads bounded query-relevant statistics from the rebuildable lexical
+    /// projection.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a stale handle, malformed projection, exhausted
+    /// candidate budget, or elapsed deadline.
+    pub fn lexical_corpus(
+        &self,
+        definition: &LexicalIndexDefinition,
+        query_tokens: &[String],
+        max_candidates: u64,
+        timeout: std::time::Duration,
+    ) -> Result<LexicalMaterializedCorpus, StorageError> {
+        if self.index_stale {
+            return Err(StorageError::StaleIndex);
+        }
+        Ok(self
+            .index
+            .lexical_corpus(definition, query_tokens, max_candidates, timeout)?)
+    }
+
+    /// Reads one vector space in strict binary-key order under explicit
+    /// candidate and decoded-byte budgets.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a stale handle, malformed state, or an exhausted
+    /// count/byte budget. No partial list is returned.
+    pub fn vector_entries(
+        &self,
+        name: &VectorSpaceName,
+        max_candidates: u64,
+        max_bytes: u64,
+    ) -> Result<Vec<VectorEntry>, StorageError> {
+        if self.index_stale {
+            return Err(StorageError::StaleIndex);
+        }
+        Ok(self.index.scan_vectors(name, max_candidates, max_bytes)?)
+    }
+
     /// Scans one bounded page in strict binary-key order.
     ///
     /// `after` is exclusive. A returned `next_after` is present only when at
@@ -330,7 +421,12 @@ impl StorageEngine {
         }
         let snapshots = self.directory.path().join("snapshots");
         let temporary = self.directory.path().join("tmp");
-        Ok(create_snapshot(&self.index, &snapshots, &temporary)?)
+        Ok(create_snapshot(
+            &self.index,
+            &snapshots,
+            &temporary,
+            self.directory.disk_format_version(),
+        )?)
     }
 
     /// Retires the active log prefix behind a verified logical snapshot.
@@ -372,8 +468,12 @@ impl StorageEngine {
             snapshot_digest: snapshot.snapshot_digest,
         };
         let next_segment = self.directory.log_path(generation);
-        let (next_log, prepared) =
-            DurableLog::open_file_at(&next_segment, next.base_sequence, next.base_digest)?;
+        let (next_log, prepared) = DurableLog::open_file_at_version(
+            &next_segment,
+            next.base_sequence,
+            next.base_digest,
+            self.directory.disk_format_version(),
+        )?;
         if prepared.valid_bytes != 0 {
             return Err(StorageError::PreparedSegmentNotEmpty { path: next_segment });
         }
@@ -621,8 +721,11 @@ mod tests {
         assert_eq!(snapshot.checkpoint_sequence, 0);
         assert_eq!(snapshot.checkpoint_digest, None);
         assert_eq!(snapshot.entry_count, 0);
+        assert_eq!(snapshot.vector_space_count, 0);
+        assert_eq!(snapshot.vector_count, 0);
+        assert_eq!(snapshot.lexical_index_count, 0);
         assert_eq!(snapshot.receipt_count, 0);
-        assert_eq!(snapshot.file_bytes, 112);
+        assert_eq!(snapshot.file_bytes, 136);
         assert_eq!(verify_snapshot(&snapshot.path)?, snapshot);
         Ok(())
     }

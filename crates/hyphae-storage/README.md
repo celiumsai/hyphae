@@ -11,7 +11,7 @@ recovery, snapshots, compaction, backups, and verified restore.
 
 ```toml
 [dependencies]
-hyphae-storage = "0.1.0"
+hyphae-storage = "0.2.0"
 ```
 
 Most applications should use `hyphae-engine`. Use this lower-level crate only

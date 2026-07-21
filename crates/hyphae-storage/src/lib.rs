@@ -17,7 +17,7 @@ pub use engine::{
     CompactionOutcome, CompactionReport, KvEntry, KvPage, MAX_SCAN_PAGE_ENTRIES, OpenedStorage,
     StorageEngine, StorageError, StorageRecoveryReport,
 };
-pub use index::MaterializedIndexError;
+pub use index::{MaterializedIndexError, VectorEntry};
 pub use log::{
     AppendOutcome, CommitReceipt, DurableLog, LogError, OpenedLog, RecoveredTransaction,
     RecoveryReport,
@@ -26,7 +26,7 @@ pub use manifest::ManifestError;
 pub use mutation::{MAX_KEY_BYTES, Mutation, MutationError};
 pub use snapshot::{
     SnapshotContents, SnapshotEntry, SnapshotError, SnapshotInfo, SnapshotReadLimits,
-    load_snapshot, verify_snapshot,
+    SnapshotVectorEntry, load_snapshot, verify_snapshot,
 };
 
 #[cfg(test)]

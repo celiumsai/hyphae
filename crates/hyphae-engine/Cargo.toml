@@ -13,10 +13,16 @@ categories.workspace = true
 description = "Embeddable facade for the autonomous, durable, and verifiable Hyphae data engine."
 documentation = "https://docs.rs/hyphae-engine"
 publish.workspace = true
+exclude = [
+    "examples/generate_disk_format_2_fixture.rs",
+    "examples/generate_retrieval_goldens.rs",
+    "tests/disk_compatibility.rs",
+]
 
 [dependencies]
 blake3.workspace = true
 crc32c.workspace = true
+hyphae-core.workspace = true
 hyphae-query.workspace = true
 hyphae-retrieval.workspace = true
 hyphae-storage.workspace = true

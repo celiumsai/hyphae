@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use hyphae_query::Value;
+use crate::Value;
 use thiserror::Error;
 
 const MAGIC: [u8; 8] = *b"HYDOC001";
@@ -419,7 +419,7 @@ fn copy_array<const N: usize>(source: &[u8]) -> [u8; N] {
 mod tests {
     use std::collections::BTreeMap;
 
-    use hyphae_query::Value;
+    use crate::Value;
 
     use super::{
         DOCUMENT_FORMAT_VERSION, DocumentError, MAX_DOCUMENT_DEPTH, NULL, OBJECT, decode_document,

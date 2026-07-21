@@ -11,7 +11,7 @@ sorting, logical cursors, aggregations, and explicit execution budgets.
 
 ```toml
 [dependencies]
-hyphae-query = "0.1.0"
+hyphae-query = "0.2.0"
 ```
 
 The executor has no database, network, embedding, or LLM dependency. Budget

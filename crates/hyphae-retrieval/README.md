@@ -10,7 +10,7 @@ Exact provider-neutral cosine retrieval and explicit abstention semantics for
 
 ```toml
 [dependencies]
-hyphae-retrieval = "0.1.0"
+hyphae-retrieval = "0.2.0"
 ```
 
 The caller owns vectors and any optional embedding provider. This crate does
