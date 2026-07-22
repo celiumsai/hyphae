@@ -269,7 +269,7 @@ impl Default for RetrievalVerificationLimits {
             proof_bytes: MAX_RETRIEVAL_PROOF_BYTES,
             snapshot: SnapshotReadLimits::default(),
             max_candidates: 100_000,
-            max_candidate_bytes: 256 * 1024 * 1024,
+            max_candidate_bytes: 1024 * 1024 * 1024,
             max_returned: 1_000,
             max_documents: 1_000_000,
             max_tokens: 10_000_000,

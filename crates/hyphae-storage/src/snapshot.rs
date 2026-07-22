@@ -81,9 +81,9 @@ pub struct SnapshotReadLimits {
 impl Default for SnapshotReadLimits {
     fn default() -> Self {
         Self {
-            file_bytes: 512 * 1024 * 1024,
+            file_bytes: 2 * 1024 * 1024 * 1024,
             entries: 1_000_000,
-            decoded_bytes: 256 * 1024 * 1024,
+            decoded_bytes: 1024 * 1024 * 1024,
         }
     }
 }
